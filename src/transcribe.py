@@ -11,17 +11,20 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
+from send2trash import send2trash
 
 load_dotenv()
 
 MODEL_FALLBACKS = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
-DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "transcribe_errors.log"
+DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "siri_errors.log"
+COURSE_HEADING = "## Course"
+HEADING_RE = re.compile(r"(?m)^## .*$")
 
 
 @dataclass(frozen=True)
-class BucketConfig:
+class SourceConfig:
     source_dir: Path
-    target_dir: Path
+    section_heading: str | None
 
 
 def required_env(name: str) -> str:
@@ -31,19 +34,15 @@ def required_env(name: str) -> str:
     return value
 
 
-def load_config() -> tuple[genai.Client, list[BucketConfig], Path]:
+def load_config() -> tuple[genai.Client, list[SourceConfig], Path, Path]:
     client = genai.Client(api_key=required_env("GEMINI_API_KEY"))
-    source_dir_0 = Path(required_env("VOICE_MEMOS_DIR_0")).expanduser()
-    source_dir_1 = Path(required_env("VOICE_MEMOS_DIR_1")).expanduser()
-    obsidian_base = Path(required_env("OBSIDIAN_BASE_DIR")).expanduser()
-    target_dir_0 = obsidian_base / required_env("OBSIDIAN_SUBDIR_0")
-    target_dir_1 = obsidian_base / required_env("OBSIDIAN_SUBDIR_1")
+    daily_dir = Path(required_env("OBSIDIAN_DAILY_DIR")).expanduser()
     error_log = DEFAULT_ERROR_LOG
-    buckets = [
-        BucketConfig(source_dir_0, target_dir_0),
-        BucketConfig(source_dir_1, target_dir_1),
+    sources = [
+        SourceConfig(Path(required_env("VOICE_MEMOS_DIR_0")).expanduser(), None),
+        SourceConfig(Path(required_env("VOICE_MEMOS_DIR_1")).expanduser(), COURSE_HEADING),
     ]
-    return client, buckets, error_log
+    return client, sources, daily_dir, error_log
 
 
 def log_error(error_log: Path, message: str) -> None:
@@ -117,22 +116,75 @@ def format_transcript_as_bullets(
     log_error(error_log, message)
 
 
-def append_with_spacing(target_file: Path, addition: str) -> None:
-    text = "\n".join(line.rstrip() for line in addition.splitlines() if line.strip())
-    if not text:
-        return
+def normalize_block(text: str) -> str:
+    return "\n".join(line.rstrip() for line in text.splitlines() if line.strip())
+
+
+def join_blocks(*blocks: str) -> str:
+    cleaned = [block.strip("\n") for block in blocks if block and block.strip("\n")]
+    if not cleaned:
+        return ""
+    return "\n\n".join(cleaned) + "\n"
+
+
+def insert_into_root(current_text: str, addition: str) -> str:
+    heading_match = HEADING_RE.search(current_text)
+    if heading_match is None:
+        return join_blocks(current_text, addition)
+    return join_blocks(current_text[: heading_match.start()], addition, current_text[heading_match.start() :])
+
+
+def find_section_bounds(current_text: str, heading: str) -> tuple[int, int, int] | None:
+    section_match = re.search(rf"(?m)^{re.escape(heading)}\s*$", current_text)
+    if section_match is None:
+        return None
+    next_heading_match = HEADING_RE.search(current_text, section_match.end())
+    section_end = next_heading_match.start() if next_heading_match else len(current_text)
+    return section_match.start(), section_match.end(), section_end
+
+
+def insert_into_section(current_text: str, heading: str, addition: str) -> str:
+    bounds = find_section_bounds(current_text, heading)
+    if bounds is None:
+        heading_match = HEADING_RE.search(current_text)
+        new_section = join_blocks(heading, addition)
+        if heading_match is None:
+            return join_blocks(current_text, new_section)
+        return join_blocks(current_text[: heading_match.start()], new_section, current_text[heading_match.start() :])
+
+    section_start, heading_end, section_end = bounds
+    section_heading = current_text[section_start:heading_end]
+    section_body = current_text[heading_end:section_end]
+    return join_blocks(
+        current_text[:section_start],
+        join_blocks(section_heading, section_body, addition),
+        current_text[section_end:],
+    )
+
+
+def build_note_text(current_text: str, addition: str, section_heading: str | None) -> str:
+    normalized_addition = normalize_block(addition)
+    if not normalized_addition:
+        return current_text
+    if section_heading is None:
+        return insert_into_root(current_text, normalized_addition)
+    return insert_into_section(current_text, section_heading, normalized_addition)
+
+
+def write_note(target_file: Path, text: str) -> None:
     target_file.parent.mkdir(parents=True, exist_ok=True)
-    current = target_file.read_text() if target_file.exists() else ""
-    if current.strip():
-        target_file.write_text(current.rstrip("\n") + "\n" + text + "\n")
-    else:
-        target_file.write_text(text + "\n")
+    target_file.write_text(text)
+
+
+def trash_file(file_path: Path) -> None:
+    send2trash(str(file_path))
 
 
 def process_audio(
     client: genai.Client,
     audio_file: Path,
-    bucket: BucketConfig,
+    source: SourceConfig,
+    daily_dir: Path,
     error_log: Path,
 ) -> None:
     if not ensure_local_file(audio_file):
@@ -140,18 +192,36 @@ def process_audio(
         return
     recorded_at = extract_recorded_datetime(audio_file)
     date_str = recorded_at.strftime("%Y-%m-%d")
-    target_file = bucket.target_dir / f"{date_str}.md"
+    target_file = daily_dir / f"{date_str}.md"
     bullets = format_transcript_as_bullets(client, audio_file, error_log)
     if bullets is None:
         return
-    append_with_spacing(target_file, bullets)
-    os.remove(str(audio_file))
+    original_exists = target_file.exists()
+    original_text = target_file.read_text() if original_exists else ""
+    updated_text = build_note_text(original_text, bullets, source.section_heading)
+    if updated_text == original_text:
+        return
+    try:
+        write_note(target_file, updated_text)
+        trash_file(audio_file)
+    except Exception as err:
+        try:
+            if original_exists:
+                write_note(target_file, original_text)
+            elif target_file.exists():
+                target_file.unlink()
+        except Exception as rollback_err:
+            log_error(
+                error_log,
+                f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to rollback note after processing error for {audio_file}: {rollback_err}",
+            )
+        log_error(error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to process file {audio_file}: {err}")
 
 
 def main() -> None:
-    client, buckets, error_log = load_config()
-    for bucket in buckets:
-        source_dir = bucket.source_dir
+    client, sources, daily_dir, error_log = load_config()
+    for source in sources:
+        source_dir = source.source_dir
         if not source_dir.exists():
             continue
         for audio_file in sorted(source_dir.iterdir()):
@@ -159,7 +229,7 @@ def main() -> None:
                 continue
             if audio_file.suffix.lower() != ".m4a":
                 continue
-            process_audio(client, audio_file, bucket, error_log)
+            process_audio(client, audio_file, source, daily_dir, error_log)
 
 
 if __name__ == "__main__":

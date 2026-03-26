@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-TEMPLATE_PATH="$REPO_DIR/com.transcribe.plist.template"
-LABEL="com.transcribe"
+TEMPLATE_PATH="$REPO_DIR/com.siri.plist.template"
+LABEL="com.siri"
 PLIST_OUT="$HOME/Library/LaunchAgents/${LABEL}.plist"
 LOG_DIR="$REPO_DIR/logs"
 
@@ -19,6 +19,7 @@ export LABEL
 
 : "${VOICE_MEMOS_DIR_0:?Set VOICE_MEMOS_DIR_0 in .env}"
 : "${VOICE_MEMOS_DIR_1:?Set VOICE_MEMOS_DIR_1 in .env}"
+: "${OBSIDIAN_DAILY_DIR:?Set OBSIDIAN_DAILY_DIR in .env}"
 
 mkdir -p "$(dirname "$PLIST_OUT")" "$LOG_DIR"
 
@@ -29,7 +30,7 @@ import sys
 
 template = Path(sys.argv[1]).read_text()
 repo = Path(os.environ["REPO_DIR"]).expanduser().resolve()
-run_script = str((repo / "src" / "run_transcribe.sh").resolve())
+run_script = str((repo / "src" / "run_siri.sh").resolve())
 replacements = {
     "__LABEL__": os.environ["LABEL"],
     "__RUN_SCRIPT__": run_script,

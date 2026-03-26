@@ -1,15 +1,16 @@
 [project]
-name = "transcribe"
+name = "siri"
 version = "0.1.0"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "dotenv>=0.9.9",
     "google-genai",
+    "send2trash>=2.1.0",
 ]
 
 [project.scripts]
-transcribe = "src.transcribe:main"
+siri = "src.transcribe:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -3,26 +3,26 @@
 ## Project Structure & Module Organization
 - Core app logic lives in `src/transcribe.py`.
 - Operational scripts are in `src/`:
-  - `src/run_transcribe.sh` runs the transcription job locally.
+  - `src/run_siri.sh` runs the transcription job locally.
   - `src/install_launchd.sh` installs/refreshes the launchd agent.
-- Launchd template is `com.transcribe.plist.template`.
-- Runtime logs are written under `logs/` (`launchd_stdout.log`, `launchd_stderr.log`, `transcribe_errors.log`).
+- Launchd template is `com.siri.plist.template`.
+- Runtime logs are written under `logs/` (`launchd_stdout.log`, `launchd_stderr.log`, `siri_errors.log`).
 - Project metadata and dependencies are defined in `pyproject.toml`.
 
 ## Build, Test, and Development Commands
 - `uv sync`: install/update the virtual environment and dependencies.
-- `./src/run_transcribe.sh`: run the transcription flow manually.
-- `./src/install_launchd.sh`: install and start `com.transcribe` LaunchAgent.
+- `./src/run_siri.sh`: run the transcription flow manually.
+- `./src/install_launchd.sh`: install and start `com.siri` LaunchAgent.
 - `uvx ruff check src/transcribe.py`: lint Python code.
 - `python3 -m py_compile src/transcribe.py`: quick syntax validation.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+ with 4-space indentation and type hints where practical.
-- Keep functions focused and side effects explicit (read/transcribe/append/delete).
+- Keep functions focused and side effects explicit (read/transcribe/append/trash).
 - Prefer `pathlib.Path` for filesystem paths.
 - Environment variables drive runtime configuration:
   - `VOICE_MEMOS_DIR_0`, `VOICE_MEMOS_DIR_1`
-  - `OBSIDIAN_BASE_DIR`, `OBSIDIAN_SUBDIR_0`, `OBSIDIAN_SUBDIR_1`
+  - `OBSIDIAN_DAILY_DIR`
   - `GEMINI_API_KEY`
 - Use `ruff` as the formatting/lint quality gate for Python.
 
