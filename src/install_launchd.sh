@@ -5,7 +5,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TEMPLATE_PATH="$REPO_DIR/com.siri.plist.template"
 LABEL="com.siri"
+OLD_LABEL="com.transcribe"
 PLIST_OUT="$HOME/Library/LaunchAgents/${LABEL}.plist"
+OLD_PLIST_OUT="$HOME/Library/LaunchAgents/${OLD_LABEL}.plist"
 LOG_DIR="$REPO_DIR/logs"
 
 if [ -f "$REPO_DIR/.env" ]; then
@@ -47,7 +49,13 @@ PY
 
 UID_VALUE="$(id -u)"
 TARGET="gui/${UID_VALUE}/${LABEL}"
+OLD_TARGET="gui/${UID_VALUE}/${OLD_LABEL}"
 
+launchctl bootout "gui/${UID_VALUE}" "$OLD_PLIST_OUT" >/dev/null 2>&1 || true
+launchctl bootout "$OLD_TARGET" >/dev/null 2>&1 || true
+if [ -f "$OLD_PLIST_OUT" ] && [ "$OLD_PLIST_OUT" != "$PLIST_OUT" ]; then
+  rm -f "$OLD_PLIST_OUT"
+fi
 launchctl bootout "gui/${UID_VALUE}" "$PLIST_OUT" >/dev/null 2>&1 || true
 launchctl bootout "$TARGET" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/${UID_VALUE}" "$PLIST_OUT"
