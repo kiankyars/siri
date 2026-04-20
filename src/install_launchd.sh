@@ -32,12 +32,23 @@ import sys
 
 template = Path(sys.argv[1]).read_text()
 repo = Path(os.environ["REPO_DIR"]).expanduser().resolve()
-run_script = str((repo / "src" / "run_siri.sh").resolve())
+sys.path.insert(0, str(repo))
+from src.simple_endpoints import resolve_simple_endpoint_dirs
+
+run_script = str((repo / "src" / "siri.sh").resolve())
+anchors = (
+    Path(os.environ["VOICE_MEMOS_DIR_0"]).expanduser(),
+    Path(os.environ["VOICE_MEMOS_DIR_1"]).expanduser(),
+)
+endpoint_dirs = resolve_simple_endpoint_dirs(*anchors)
+voice_memos_library_dir = Path.home() / "Library" / "Group Containers" / "group.com.apple.VoiceMemos.shared" / "Recordings"
 replacements = {
     "__LABEL__": os.environ["LABEL"],
     "__RUN_SCRIPT__": run_script,
-    "__WATCH_NOTES__": str(Path(os.environ["VOICE_MEMOS_DIR_0"]).expanduser().resolve()),
-    "__WATCH_COURSE__": str(Path(os.environ["VOICE_MEMOS_DIR_1"]).expanduser().resolve()),
+    "__WATCH_NOTES__": str(endpoint_dirs["notes"].resolve()),
+    "__WATCH_COURSE__": str(endpoint_dirs["course"].resolve()),
+    "__WATCH_JL__": str(endpoint_dirs["jl"].resolve()),
+    "__WATCH_VOICE_MEMOS__": str(voice_memos_library_dir.resolve()),
     "__WORK_DIR__": str(repo),
     "__STDOUT_LOG__": str((repo / "logs" / "launchd_stdout.log").resolve()),
     "__STDERR_LOG__": str((repo / "logs" / "launchd_stderr.log").resolve()),

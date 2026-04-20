@@ -1,0 +1,18 @@
+{
+  "monde": {
+    "workflow": "agentic",
+    "routing_mode": "primary_person",
+    "target_path_template": "people/{slug}.md",
+    "section_heading_template": "## {date}",
+    "cross_note_links": "omit",
+    "speaker_mode": "multi"
+  },
+  "réflexion": {
+    "workflow": "agentic",
+    "routing_mode": "daily_note",
+    "target_path_template": "notes/{date}.md",
+    "section_heading_style": "## <few-word summary> #reflection",
+    "cross_note_links": "omit",
+    "speaker_mode": "single"
+  }
+}

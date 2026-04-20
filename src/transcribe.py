@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import os
 import re
-import subprocess
 import time
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -13,42 +10,31 @@ from google import genai
 from google.genai import errors, types
 from send2trash import send2trash
 
+try:
+    from .runtime_support import ensure_local_file, log_error, required_env
+    from .simple_endpoints import SimpleEndpoint as SourceConfig
+    from .simple_endpoints import load_simple_endpoints
+except ImportError:
+    from runtime_support import ensure_local_file, log_error, required_env
+    from simple_endpoints import SimpleEndpoint as SourceConfig
+    from simple_endpoints import load_simple_endpoints
+
 load_dotenv()
 
-MODEL_FALLBACKS = ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+MODEL_FALLBACKS = ["gemini-3.1-flash-lite-preview", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
 DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "siri_errors.log"
-COURSE_HEADING = "## Course"
 HEADING_RE = re.compile(r"(?m)^## .*$")
-
-
-@dataclass(frozen=True)
-class SourceConfig:
-    source_dir: Path
-    section_heading: str | None
-
-
-def required_env(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"Missing required env var: {name}")
-    return value
 
 
 def load_config() -> tuple[genai.Client, list[SourceConfig], Path, Path]:
     client = genai.Client(api_key=required_env("GEMINI_API_KEY"))
     daily_dir = Path(required_env("OBSIDIAN_DAILY_DIR")).expanduser()
     error_log = DEFAULT_ERROR_LOG
-    sources = [
-        SourceConfig(Path(required_env("VOICE_MEMOS_DIR_0")).expanduser(), None),
-        SourceConfig(Path(required_env("VOICE_MEMOS_DIR_1")).expanduser(), COURSE_HEADING),
-    ]
+    sources = load_simple_endpoints(
+        Path(required_env("VOICE_MEMOS_DIR_0")).expanduser(),
+        Path(required_env("VOICE_MEMOS_DIR_1")).expanduser(),
+    )
     return client, sources, daily_dir, error_log
-
-
-def log_error(error_log: Path, message: str) -> None:
-    error_log.parent.mkdir(parents=True, exist_ok=True)
-    with error_log.open("a") as handle:
-        handle.write(f"{message}\n")
 
 
 def extract_recorded_datetime(file_path: Path) -> datetime:
@@ -58,31 +44,6 @@ def extract_recorded_datetime(file_path: Path) -> datetime:
     return datetime.strptime(f"{match.group(1)} {match.group(2)}", "%Y-%m-%d %H.%M.%S")
 
 
-def file_flags(file_path: Path) -> str:
-    result = subprocess.run(
-        ["stat", "-f", "%Sf", str(file_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        return ""
-    return result.stdout.strip()
-
-
-def ensure_local_file(file_path: Path, timeout: int = 120, poll_interval: float = 2.0) -> bool:
-    """Download iCloud file and block until it's materialized. Returns True if local."""
-    if "dataless" not in file_flags(file_path):
-        return True
-    subprocess.run(["brctl", "download", str(file_path)], check=False)
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if "dataless" not in file_flags(file_path):
-            return True
-        time.sleep(poll_interval)
-    return False
-
-
 def format_transcript_as_bullets(
     client: genai.Client,
     audio_file: Path,
@@ -90,7 +51,8 @@ def format_transcript_as_bullets(
 ) -> str | None:
     prompt = (
         "Convert this transcript into markdown hyphen bullets. "
-        "Avoid over-splitting. Output bullets only. Do not include timestamps. Do not modify the transcript."
+        "Avoid over-splitting: keep consecutive sentences in the same bullet when they express one idea, and only start a new bullet when the topic clearly changes. "
+        "Output bullets only. Do not include timestamps. Do not modify the transcript."
     )
     audio_bytes = audio_file.read_bytes()
     contents = [prompt, types.Part.from_bytes(data=audio_bytes, mime_type="audio/mp4")]

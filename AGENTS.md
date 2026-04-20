@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 - Core app logic lives in `src/transcribe.py`.
 - Operational scripts are in `src/`:
-  - `src/run_siri.sh` runs the transcription job locally.
+  - `src/siri.sh` runs the transcription job locally.
   - `src/install_launchd.sh` installs/refreshes the launchd agent.
 - Launchd template is `com.siri.plist.template`.
 - Runtime logs are written under `logs/` (`launchd_stdout.log`, `launchd_stderr.log`, `siri_errors.log`).
@@ -11,14 +11,13 @@
 
 ## Build, Test, and Development Commands
 - `uv sync`: install/update the virtual environment and dependencies.
-- `./src/run_siri.sh`: run the transcription flow manually.
+- `./src/siri.sh`: run the transcription flow manually.
 - `./src/install_launchd.sh`: install and start `com.siri` LaunchAgent.
 - `uvx ruff check src/transcribe.py`: lint Python code.
 - `python3 -m py_compile src/transcribe.py`: quick syntax validation.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+ with 4-space indentation and type hints where practical.
-- Keep functions focused and side effects explicit (read/transcribe/append/trash).
 - Prefer `pathlib.Path` for filesystem paths.
 - Environment variables drive runtime configuration:
   - `VOICE_MEMOS_DIR_0`, `VOICE_MEMOS_DIR_1`
@@ -35,9 +34,7 @@
 - Verify expected output file append behavior and confirm no duplicate processing in `logs/launchd_stderr.log`.
 
 ## Commit & Pull Request Guidelines
-- Follow concise, imperative commit messages (current history style), e.g.:
-  - `remove LAUNCHD_LABEL refs`
-  - `Make bucket routing fully env-driven and use os.remove cleanup`
+- Follow concise, imperative commit messages (current history style):
 - Prefer one logical change per commit.
 - PRs should include:
   - What changed and why
