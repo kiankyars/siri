@@ -13,7 +13,6 @@
         <string>__WATCH_NOTES__</string>
         <string>__WATCH_COURSE__</string>
         <string>__WATCH_JL__</string>
-        <string>__WATCH_VOICE_MEMOS__</string>
     </array>
     <key>WorkingDirectory</key>
     <string>__WORK_DIR__</string>

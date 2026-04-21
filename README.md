@@ -15,7 +15,7 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
 - Agentic Voice Memos processing:
   - watches the macOS Voice Memos store
   - processes recordings renamed exactly `monde` or `réflexion`
-  - uses a temporary working copy under `TMPDIR`
+  - reads the original recording directly from the Voice Memos library
   - `monde` writes into `people/{name}.md` under a `## YYYY-MM-DD` section
   - `réflexion` writes into `notes/YYYY-MM-DD.md` under `## <few-word summary> #reflection`
   - leaves source memos in Voice Memos for manual deletion
@@ -38,14 +38,18 @@ Agentic Voice Memos processed-file state is written to `logs/voice_memos_import_
 ## Run manually
 
 - `./src/siri.sh`
+- `./src/run_simple_ingest.sh`
+- `./src/run_voice_memos_ingest.sh`
 
 ## Install launchd watcher
 
 - `./src/install_launchd.sh`
 
-This installs `~/Library/LaunchAgents/com.siri.plist` from the repo template and watches:
+This installs two LaunchAgents from the repo templates:
 
-- the resolved `notes` inbox
-- the resolved `course` inbox
-- the resolved `jl` inbox
-- `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings`
+- `~/Library/LaunchAgents/com.siri.simple.plist`
+  - watches the resolved `notes`, `course`, and `jl` inboxes
+  - runs `src/run_simple_ingest.sh`
+- `~/Library/LaunchAgents/com.siri.voice-memos.plist`
+  - watches `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings`
+  - runs `src/run_voice_memos_ingest.sh`

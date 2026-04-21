@@ -13,7 +13,10 @@ if [ -f "$REPO_DIR/.env" ]; then
   set +a
 fi
 
-LOCK_DIR="$REPO_DIR/logs/run.lock"
+mkdir -p "$REPO_DIR/logs"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Trace wrapper start: voice memos" >> "$REPO_DIR/logs/siri_errors.log"
+
+LOCK_DIR="$REPO_DIR/logs/run_voice_memos_ingest.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   if [ -f "$LOCK_DIR/pid" ]; then
     LOCK_PID="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
@@ -29,6 +32,7 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   fi
 fi
 echo "$$" > "$LOCK_DIR/pid"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Trace wrapper lock acquired: voice memos" >> "$REPO_DIR/logs/siri_errors.log"
 cleanup() {
   rm -f "$LOCK_DIR/pid"
   rmdir "$LOCK_DIR" 2>/dev/null || true
@@ -40,6 +44,4 @@ if [ -x ".venv/bin/python" ]; then
   PYTHON_BIN="$REPO_DIR/.venv/bin/python"
 fi
 
-"$PYTHON_BIN" src/import_voice_memos.py || true
-
-"$PYTHON_BIN" src/transcribe.py
+"$PYTHON_BIN" src/import_voice_memos.py

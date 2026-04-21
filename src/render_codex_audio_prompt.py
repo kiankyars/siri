@@ -63,6 +63,7 @@ def build_agentic_prompt(
             "- If the target note already contains a section for this recording date, update it instead of adding a duplicate section.",
             "- Preserve important proper nouns, references, and ideas from the audio.",
             "- Do not include audio-file backlinks or attachment references in the markdown.",
+            f"- Copy the source `.m4a` into `{vault_root / 'audio'}` with a concise lowercase hyphenated filename; for `monde` use `<primary-person-slug>-{date}.m4a`, and for `réflexion` use `<section-summary-slug>-{date}.m4a`.",
         ]
     )
     if routing_mode == "primary_person":

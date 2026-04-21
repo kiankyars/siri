@@ -5,10 +5,8 @@ import json
 import os
 import re
 import shutil
-import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -29,7 +27,6 @@ DEFAULT_STATE_PATH = Path(__file__).resolve().parent.parent / "logs" / "voice_me
 DEFAULT_LIBRARY_DIR = Path.home() / "Library" / "Group Containers" / "group.com.apple.VoiceMemos.shared" / "Recordings"
 DEFAULT_ENDPOINTS_PATH = Path(__file__).resolve().with_name("obsidian_audio_routing_endpoints.json")
 DEFAULT_PROMPT_RENDERER = Path(__file__).resolve().with_name("render_codex_audio_prompt.py")
-VOICE_MEMOS_DB_NAME = "CloudRecordings.db"
 NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -43,12 +40,7 @@ class Config:
     error_log: Path
     repo_root: Path
     vault_root: Path
-
-
-@dataclass(frozen=True)
-class VoiceMemoRecord:
-    uuid: str
-    relative_path: str
+    voice_memos_dir: Path
 
 
 @dataclass(frozen=True)
@@ -82,6 +74,7 @@ def load_config() -> Config:
         error_log=Path(os.getenv("VOICE_MEMOS_ERROR_LOG", str(DEFAULT_ERROR_LOG))).expanduser(),
         repo_root=repo_root,
         vault_root=daily_dir.parent,
+        voice_memos_dir=DEFAULT_LIBRARY_DIR,
     )
 
 
@@ -96,20 +89,14 @@ def load_endpoint_configs(endpoints_path: Path) -> dict[str, str]:
     return {normalize_token(endpoint): endpoint for endpoint in payload}
 
 
-def query_voice_memos(library_dir: Path) -> list[VoiceMemoRecord]:
-    db_path = library_dir / VOICE_MEMOS_DB_NAME
-    if not db_path.exists():
-        raise RuntimeError(f"Voice Memos database not found: {db_path}")
-    with sqlite3.connect(db_path) as connection:
-        rows = connection.execute(
-            """
-            SELECT ZUNIQUEID, ZPATH
-            FROM ZCLOUDRECORDING
-            WHERE ZUNIQUEID IS NOT NULL AND ZPATH IS NOT NULL
-            ORDER BY ZDATE DESC
-            """
-        ).fetchall()
-    return [VoiceMemoRecord(uuid=row[0], relative_path=row[1]) for row in rows]
+def discover_voice_memos(library_dir: Path) -> list[Path]:
+    if not library_dir.exists():
+        raise RuntimeError(f"Voice Memos directory not found: {library_dir}")
+    return sorted(
+        (path for path in library_dir.glob("*.m4a") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
 
 
 def wait_for_stable_file(file_path: Path, timeout: int = 60, poll_interval: float = 1.0) -> bool:
@@ -170,6 +157,13 @@ def is_processed(records: dict[str, object], uuid: str) -> bool:
     return isinstance(record, dict) and bool(record.get("processed_at"))
 
 
+def state_keys_for_memo(file_path: Path, metadata: VoiceMemoMetadata) -> list[str]:
+    resolved_path = str(file_path.resolve())
+    if metadata.voice_memo_uuid:
+        return [metadata.voice_memo_uuid, resolved_path]
+    return [resolved_path]
+
+
 def build_prompt(config: Config, endpoint: str, audio_file: Path, recorded_at: datetime) -> str:
     result = subprocess.run(
         [
@@ -206,6 +200,8 @@ def run_codex(config: Config, prompt: str) -> None:
             str(config.repo_root),
             "--add-dir",
             str(config.vault_root),
+            "--add-dir",
+            str(config.voice_memos_dir),
             "-",
         ],
         input=prompt,
@@ -221,12 +217,11 @@ def process_voice_memos(config: Config, dry_run: bool) -> int:
     state = load_state(config.state_path)
     records = state.setdefault("records", {})
     matches = 0
+    source_paths = discover_voice_memos(config.voice_memos_dir)
+    first_path = source_paths[0].name if source_paths else "none"
+    log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace importer start: count={len(source_paths)} first={first_path}")
 
-    for record in query_voice_memos(DEFAULT_LIBRARY_DIR):
-        if is_processed(records, record.uuid):
-            continue
-
-        source_path = DEFAULT_LIBRARY_DIR / record.relative_path
+    for source_path in source_paths:
         if not source_path.exists():
             continue
         if not ensure_local_file(source_path):
@@ -245,6 +240,10 @@ def process_voice_memos(config: Config, dry_run: bool) -> int:
         endpoint = endpoint_configs.get(normalize_token(metadata.title))
         if endpoint is None:
             continue
+        state_keys = state_keys_for_memo(source_path, metadata)
+        if any(is_processed(records, key) for key in state_keys):
+            continue
+        log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace Voice Memo match: {source_path} -> {endpoint}")
 
         matches += 1
         if dry_run:
@@ -252,19 +251,21 @@ def process_voice_memos(config: Config, dry_run: bool) -> int:
             continue
 
         try:
-            with tempfile.TemporaryDirectory(prefix="siri-agentic-") as tmp_dir:
-                tmp_audio = Path(tmp_dir) / f"{record.uuid}.m4a"
-                shutil.copy2(source_path, tmp_audio)
-                prompt = build_prompt(config, endpoint, tmp_audio, metadata.recorded_at)
-                run_codex(config, prompt)
+            prompt = build_prompt(config, endpoint, source_path, metadata.recorded_at)
+            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace Codex start: {source_path}")
+            run_codex(config, prompt)
+            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace Codex finish: {source_path}")
         except Exception as err:
             log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to process Voice Memo {source_path}: {err}")
             continue
 
-        records[record.uuid] = {
+        record_key = metadata.voice_memo_uuid or str(source_path.resolve())
+        records.pop(str(source_path.resolve()), None)
+        records[record_key] = {
             "endpoint": endpoint,
             "processed_at": datetime.now().isoformat(),
             "recorded_at": metadata.recorded_at.isoformat(),
+            "source_path": str(source_path.resolve()),
             "title": metadata.title,
         }
         save_state(config.state_path, state)
