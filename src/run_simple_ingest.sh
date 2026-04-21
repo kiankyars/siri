@@ -13,7 +13,7 @@ if [ -f "$REPO_DIR/.env" ]; then
   set +a
 fi
 
-LOCK_DIR="$REPO_DIR/logs/run.lock"
+LOCK_DIR="$REPO_DIR/logs/run_simple_ingest.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   if [ -f "$LOCK_DIR/pid" ]; then
     LOCK_PID="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"

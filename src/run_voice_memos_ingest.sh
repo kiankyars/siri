@@ -16,7 +16,7 @@ fi
 mkdir -p "$REPO_DIR/logs"
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Trace wrapper start: voice memos" >> "$REPO_DIR/logs/siri_errors.log"
 
-LOCK_DIR="$REPO_DIR/logs/run.lock"
+LOCK_DIR="$REPO_DIR/logs/run_voice_memos_ingest.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   if [ -f "$LOCK_DIR/pid" ]; then
     LOCK_PID="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
