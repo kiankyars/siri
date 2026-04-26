@@ -39,7 +39,6 @@ def build_agentic_prompt(
     speaker_mode = str(config.get("speaker_mode") or "single")
     section_heading_template = config.get("section_heading_template")
     section_heading_style = config.get("section_heading_style")
-    cross_note_links = str(config.get("cross_note_links") or "allow")
     lines = [
         "Process this audio capture for the Obsidian vault.",
         f"Endpoint: {endpoint}",
@@ -59,11 +58,9 @@ def build_agentic_prompt(
     lines.append("Task:")
     lines.extend(
         [
-            "- Edit the Obsidian vault in place rather than drafting markdown in your final response.",
-            "- If the target note already contains a section for this recording date, update it instead of adding a duplicate section.",
+            "- Edit the Obsidian vault in place.",
             "- Preserve important proper nouns, references, and ideas from the audio.",
             "- Do not include audio-file backlinks or attachment references in the markdown.",
-            f"- Copy the source `.m4a` into `{vault_root / 'audio'}` with a concise lowercase hyphenated filename; for `monde` use `<primary-person-slug>-{date}.m4a`, and for `réflexion` use `<section-summary-slug>-{date}.m4a`.",
         ]
     )
     if routing_mode == "primary_person":
@@ -71,6 +68,7 @@ def build_agentic_prompt(
             [
                 "- Infer one primary person from the recording.",
                 "- Use that person to choose the final note path under the `people/` directory, using a lowercase hyphenated slug for the filename.",
+                f"- Copy the source `.m4a` into `{vault_root / 'audio'}` as `<primary-person-slug>-{date}.m4a`.",
                 f"- Create or update a `## {date}` section in that person note.",
                 "- Preserve the rest of the person note if it already exists.",
             ]
@@ -81,6 +79,7 @@ def build_agentic_prompt(
                 "- Listen to or transcribe the audio and synthesize it into a coherent markdown section for the daily note.",
                 "- Write directly into the target daily note.",
                 "- Title the section as an H2 using a few-word summary of the réflexion and append `#reflection` on that same heading line.",
+                f"- Copy the source `.m4a` into `{vault_root / 'audio'}` as `<section-summary-slug>-{date}.m4a`.",
             ]
         )
     if speaker_mode == "multi":
@@ -95,21 +94,9 @@ def build_agentic_prompt(
     else:
         lines.extend(
             [
-                "- Treat this as a single-speaker réflexion by default.",
-                "- Do not add speaker labels or diarization unless the audio clearly contains another voice.",
-                "- Preserve the first-person voice and internal structure of the réflexion when useful.",
+                "- Preserve the first-person voice and internal structure when useful.",
             ]
         )
-    if cross_note_links == "omit":
-        lines.append("- Write plain markdown without backlinks or cross-note references.")
-    lines.extend(
-        [
-            "Output requirements:",
-            "- Make the file edit directly in the vault.",
-            "- In your final response, briefly confirm which file you updated.",
-            "- Do not wrap the output in fences.",
-        ]
-    )
     return "\n".join(lines)
 
 
