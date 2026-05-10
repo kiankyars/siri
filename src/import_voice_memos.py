@@ -190,12 +190,12 @@ def build_prompt(config: Config, endpoint: str, audio_file: Path, recorded_at: d
     return prompt
 
 
-def run_codex(config: Config, prompt: str) -> None:
+def run_codex(config: Config, prompt: str) -> bool:
     result = subprocess.run(
         [
             config.codex_bin,
             "exec",
-            "--full-auto",
+            "--dangerously-bypass-approvals-and-sandbox",
             "-C",
             str(config.repo_root),
             "--add-dir",
@@ -208,8 +208,28 @@ def run_codex(config: Config, prompt: str) -> None:
         text=True,
         check=False,
     )
+    return result.returncode == 0
+
+
+def run_claude(config: Config, prompt: str) -> None:
+    result = subprocess.run(
+        [
+            "claude",
+            "-p",
+            "--dangerously-skip-permissions",
+            "--add-dir",
+            str(config.vault_root),
+            "--add-dir",
+            str(config.voice_memos_dir),
+            prompt,
+        ],
+        cwd=str(config.repo_root),
+        stdin=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
     if result.returncode != 0:
-        raise RuntimeError(f"codex exec failed with exit code {result.returncode}")
+        raise RuntimeError(f"claude exec failed with exit code {result.returncode}")
 
 
 def process_voice_memos(config: Config, dry_run: bool) -> int:
@@ -252,9 +272,10 @@ def process_voice_memos(config: Config, dry_run: bool) -> int:
 
         try:
             prompt = build_prompt(config, endpoint, source_path, metadata.recorded_at)
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace Codex start: {source_path}")
-            run_codex(config, prompt)
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace Codex finish: {source_path}")
+            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace agent start: {source_path}")
+            if not run_codex(config, prompt):
+                run_claude(config, prompt)
+            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace agent finish: {source_path}")
         except Exception as err:
             log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to process Voice Memo {source_path}: {err}")
             continue
