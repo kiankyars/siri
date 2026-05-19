@@ -21,7 +21,7 @@ except ImportError:
 
 load_dotenv()
 
-MODEL_FALLBACKS = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+MODEL_FALLBACKS = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
 DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "siri_errors.log"
 HEADING_RE = re.compile(r"(?m)^## .*$")
 
