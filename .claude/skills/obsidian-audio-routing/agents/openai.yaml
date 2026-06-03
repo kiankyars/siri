@@ -1,0 +1,7 @@
+interface:
+  display_name: "Obsidian Audio Routing"
+  short_description: "Route renamed Voice Memos audio into the right agentic vault target"
+  default_prompt: "Use $obsidian-audio-routing to resolve a renamed `monde` or `réflexion` recording and generate the correct Codex prompt for the target note."
+
+policy:
+  allow_implicit_invocation: true
