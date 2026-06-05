@@ -205,30 +205,10 @@ def run_codex(config: Config, prompt: str) -> bool:
             "-",
         ],
         input=prompt,
-        capture_output=True,
         text=True,
         check=False,
     )
-    if result.returncode != 0:
-        log_error(config.error_log, f"Codex failed (code {result.returncode}): {result.stderr.strip()}")
-        return False
-    return True
-
-def run_gemini(config: Config, prompt: str) -> bool: 
-    result = subprocess.run( 
-        [ 
-            "gemini", 
-            "-y", 
-            "--include-directories", 
-            f"{config.vault_root},{config.voice_memos_dir}", 
-            "-p", 
-            prompt, 
-        ], 
-        cwd=str(config.repo_root), 
-        text=True, 
-        check=False, 
-    ) 
-    return result.returncode == 0 
+    return result.returncode == 0
 
 
 def run_claude(config: Config, prompt: str) -> None:
@@ -278,6 +258,7 @@ def process_voice_memos(config: Config, dry_run: bool) -> int:
             continue
 
         endpoint = endpoint_configs.get(normalize_token(metadata.title))
+        print(f"Checking {source_path.name} title={metadata.title}")
         if endpoint is None:
             continue
         state_keys = state_keys_for_memo(source_path, metadata)
@@ -294,8 +275,7 @@ def process_voice_memos(config: Config, dry_run: bool) -> int:
             prompt = build_prompt(config, endpoint, source_path, metadata.recorded_at)
             log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace agent start: {source_path}")
             if not run_codex(config, prompt):
-                if not run_gemini(config, prompt):
-                    run_claude(config, prompt)
+                run_claude(config, prompt)
             log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace agent finish: {source_path}")
         except Exception as err:
             log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to process Voice Memo {source_path}: {err}")
