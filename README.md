@@ -41,15 +41,22 @@ Agentic Voice Memos processed-file state is written to `logs/voice_memos_import_
 - `./src/run_simple_ingest.sh`
 - `./src/run_voice_memos_ingest.sh`
 
-## Install launchd watcher
+## Install launchd watchers
 
-- `./src/install_launchd.sh`
+There are two independent LaunchAgents. This lets you run one on one computer and the other on a different computer.
 
-This installs two LaunchAgents from the repo templates:
-
-- `~/Library/LaunchAgents/com.siri.simple.plist`
-  - watches the resolved `notes`, `course`, and `jl` inboxes
+- `./src/install_launchd_simple.sh`
+  - installs `~/Library/LaunchAgents/com.siri.simple.plist`
+  - watches the resolved `notes`, `course`, and `jl` inboxes (derived from `VOICE_MEMOS_DIR_0`/`VOICE_MEMOS_DIR_1`)
   - runs `src/run_simple_ingest.sh`
-- `~/Library/LaunchAgents/com.siri.voice-memos.plist`
+
+- `./src/install_launchd_voice_memos.sh`
+  - installs `~/Library/LaunchAgents/com.siri.voice-memos.plist`
   - watches `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings`
   - runs `src/run_voice_memos_ingest.sh`
+
+Uninstallers (for cleanly removing from a specific machine):
+- `./src/uninstall_launchd_simple.sh`
+- `./src/uninstall_launchd_voice_memos.sh`
+
+These are built from the templates `com.siri.simple.plist.template` and `com.siri.voice-memos.plist.template` in the repo root.
