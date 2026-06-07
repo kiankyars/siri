@@ -1,17 +1,20 @@
 #!/bin/bash
 set -euo pipefail
 
-# Combined entry point to uninstall both LaunchAgents.
-# Mirrors install_launchd.sh.
+# Uninstall both LaunchAgents and their plists.
+# Safe to run even if the agents are not installed.
+# This is the primary/only uninstall command.
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+for label in com.siri.simple com.siri.voice-memos; do
+  UID_VALUE="$(id -u)"
+  plist="$HOME/Library/LaunchAgents/${label}.plist"
 
-echo "==> Uninstalling com.siri.simple"
-"$SCRIPT_DIR/uninstall_launchd_simple.sh"
+  echo "Unloading $label..."
+  launchctl bootout "gui/${UID_VALUE}" "$plist" >/dev/null 2>&1 || true
+  launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
 
-echo
-echo "==> Uninstalling com.siri.voice-memos"
-"$SCRIPT_DIR/uninstall_launchd_voice_memos.sh"
+  rm -f "$plist"
 
-echo
-echo "Both LaunchAgents uninstalled (if they were present)."
+  echo "Removed $label (if it was present)."
+  echo "plist: $plist (deleted)"
+done
