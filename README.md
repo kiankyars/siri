@@ -43,20 +43,21 @@ Agentic Voice Memos processed-file state is written to `logs/voice_memos_import_
 
 ## Install launchd watchers
 
-There are two independent LaunchAgents. This lets you run one on one computer and the other on a different computer.
+Both LaunchAgents are designed to run on the **same machine** (the personal Mac that has access to the iCloud audio sources). The primary command is:
 
+- `./src/install_launchd.sh`
+  - Installs/refreshes **both** agents:
+    - `com.siri.simple`: watches the resolved `notes`/`course`/`jl` iCloud folders and runs `src/run_simple_ingest.sh`
+    - `com.siri.voice-memos`: watches the Voice Memos library and runs `src/run_voice_memos_ingest.sh`
+
+Per-agent scripts are still present for advanced use:
 - `./src/install_launchd_simple.sh`
-  - installs `~/Library/LaunchAgents/com.siri.simple.plist`
-  - watches the resolved `notes`, `course`, and `jl` inboxes (derived from `VOICE_MEMOS_DIR_0`/`VOICE_MEMOS_DIR_1`)
-  - runs `src/run_simple_ingest.sh`
-
 - `./src/install_launchd_voice_memos.sh`
-  - installs `~/Library/LaunchAgents/com.siri.voice-memos.plist`
-  - watches `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings`
-  - runs `src/run_voice_memos_ingest.sh`
 
-Uninstallers (for cleanly removing from a specific machine):
-- `./src/uninstall_launchd_simple.sh`
-- `./src/uninstall_launchd_voice_memos.sh`
+Uninstall (combined or per-agent):
+- `./src/uninstall_launchd.sh`
+- `./src/uninstall_launchd_simple.sh` / `./src/uninstall_launchd_voice_memos.sh`
 
-These are built from the templates `com.siri.simple.plist.template` and `com.siri.voice-memos.plist.template` in the repo root.
+These are built from the templates `com.siri.simple.plist.template` and `com.siri.voice-memos.plist.template`.
+
+**Important for conflict avoidance**: See the Git `merge=union` configuration in the Obsidian vault (`.gitattributes`). This lets non-overlapping appends (your manual edits + auto-transcribed bullets at the end of daily notes) combine cleanly during the `pull --rebase` performed by the agents.

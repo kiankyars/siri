@@ -6,9 +6,9 @@
   - `src/siri.sh` runs both ingestion flows locally.
   - `src/run_simple_ingest.sh` runs the iCloud inbox transcription flow.
   - `src/run_voice_memos_ingest.sh` runs the Voice Memos import flow.
-  - `src/install_launchd_simple.sh` installs/refreshes the `com.siri.simple` LaunchAgent (iCloud inboxes).
-  - `src/install_launchd_voice_memos.sh` installs/refreshes the `com.siri.voice-memos` LaunchAgent.
-  - `src/uninstall_launchd_simple.sh` and `src/uninstall_launchd_voice_memos.sh` remove the respective LaunchAgent.
+  - `src/install_launchd.sh` (combined) installs/refreshes both LaunchAgents (current recommended setup: both on the personal Mac).
+  - `src/install_launchd_simple.sh` and `src/install_launchd_voice_memos.sh` are available for independent management if needed.
+  - `src/uninstall_launchd.sh` (combined) removes both; per-agent uninstall scripts also exist.
 - Launchd templates are `com.siri.simple.plist.template` and `com.siri.voice-memos.plist.template`.
 - Runtime logs are written under `logs/` (e.g. `launchd_simple_*.log`, `launchd_voice_memos_*.log`, `siri_errors.log`).
 - Project metadata and dependencies are defined in `pyproject.toml`.
@@ -16,10 +16,9 @@
 ## Build, Test, and Development Commands
 - `uv sync`: install/update the virtual environment and dependencies.
 - `./src/siri.sh`: run the transcription flow manually.
-- `./src/install_launchd_simple.sh`: install and start only the `com.siri.simple` LaunchAgent.
-- `./src/install_launchd_voice_memos.sh`: install and start only the `com.siri.voice-memos` LaunchAgent.
-- `./src/uninstall_launchd_simple.sh`: remove the simple LaunchAgent.
-- `./src/uninstall_launchd_voice_memos.sh`: remove the voice-memos LaunchAgent.
+- `./src/install_launchd.sh`: install and start both `com.siri.simple` and `com.siri.voice-memos` LaunchAgents (primary command now that both run on the same machine).
+- `./src/install_launchd_simple.sh` / `./src/install_launchd_voice_memos.sh`: install only one (advanced).
+- `./src/uninstall_launchd.sh`: remove both.
 - `uvx ruff check src/transcribe.py`: lint Python code.
 - `python3 -m py_compile src/transcribe.py`: quick syntax validation.
 
