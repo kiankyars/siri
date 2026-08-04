@@ -13,7 +13,7 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
 - `notes` is the catch-all simple inbox for podcasts, books, reading thoughts, and other uncategorized captures.
 - After a simple-ingest `.m4a` is successfully appended into the daily note, the source file is moved to macOS Trash.
 - Agentic Voice Memos processing:
-  - watches the macOS Voice Memos store
+  - watches the macOS Voice Memos store and also scans every eight minutes as a fallback for coalesced filesystem events
   - rescans recordings that arrive or finish syncing during an active importer run before exiting
   - processes recordings renamed exactly `monde` or `réflexion`
   - reads the original recording directly from the Voice Memos library

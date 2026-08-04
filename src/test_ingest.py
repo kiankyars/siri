@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import plistlib
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +38,19 @@ class VoiceMemoPromptTests(unittest.TestCase):
                 "Process it into the vault."
             ),
         )
+
+
+class VoiceMemoLaunchdTests(unittest.TestCase):
+    def test_voice_memos_watcher_has_eight_minute_fallback(self) -> None:
+        template_path = (
+            Path(__file__).resolve().parent.parent
+            / "com.siri.voice-memos.plist.template"
+        )
+
+        with template_path.open("rb") as template_file:
+            launchd_config = plistlib.load(template_file)
+
+        self.assertEqual(launchd_config["StartInterval"], 480)
 
 
 class CodexInvocationTests(unittest.TestCase):
