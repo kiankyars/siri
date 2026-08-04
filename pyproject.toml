@@ -5,12 +5,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "dotenv>=0.9.9",
-    "google-genai",
+    "google-genai>=1.66.0,<2",
     "send2trash>=2.1.0",
 ]
 
 [project.scripts]
 siri = "src.transcribe:main"
+siri-transcribe-audio = "src.transcribe_audio:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -23,4 +24,5 @@ only-include = [
     "src/runtime_support.py",
     "src/simple_endpoints.py",
     "src/transcribe.py",
+    "src/transcribe_audio.py",
 ]

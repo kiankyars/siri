@@ -2,6 +2,7 @@
 
 ## Project Structure & Module Organization
 - Simple inbox transcription lives in `src/transcribe.py`.
+- Reusable Gemini audio transcription lives in `src/transcribe_audio.py`.
 - Routed Voice Memos discovery and agent invocation live in `src/import_voice_memos.py`.
 - Operational scripts are in `src/`:
   - `src/siri.sh` runs both ingestion flows locally.
@@ -20,8 +21,10 @@
 - `./src/uninstall_launchd.sh`: remove both.
 - `uvx ruff check src/import_voice_memos.py src/test_ingest.py`: lint agentic Voice Memos code.
 - `uvx ruff check src/transcribe.py`: lint simple inbox transcription code.
+- `uvx ruff check src/transcribe_audio.py src/test_transcribe_audio.py`: lint the reusable Gemini transcription helper.
+- `uv run siri-transcribe-audio /path/to/recording.m4a`: transcribe one recording with Gemini 3.6 Flash.
 - `uv run python -m unittest discover -s src -p 'test_*.py'`: run focused unit tests.
-- `uv run python -m py_compile src/transcribe.py src/import_voice_memos.py`: quick syntax validation.
+- `uv run python -m py_compile src/transcribe.py src/transcribe_audio.py src/import_voice_memos.py`: quick syntax validation.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+ with 4-space indentation and type hints where practical.
@@ -36,7 +39,7 @@
 - Validate changes with:
   1. `uv run python -m unittest discover -s src -p 'test_*.py'`
   2. `uvx ruff check src/import_voice_memos.py src/test_ingest.py`
-  3. `uv run python -m py_compile src/transcribe.py src/import_voice_memos.py`
+  3. `uv run python -m py_compile src/transcribe.py src/transcribe_audio.py src/import_voice_memos.py`
   4. Manual smoke run with a sample `.m4a` in a configured voice memo directory.
 - Verify expected output file append behavior and confirm no duplicate processing in the relevant `logs/launchd_*_stderr.log`.
 
