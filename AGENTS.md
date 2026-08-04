@@ -1,7 +1,8 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- Core app logic lives in `src/transcribe.py`.
+- Simple inbox transcription lives in `src/transcribe.py`.
+- Routed Voice Memos discovery and agent invocation live in `src/import_voice_memos.py`.
 - Operational scripts are in `src/`:
   - `src/siri.sh` runs both ingestion flows locally.
   - `src/run_simple_ingest.sh` runs the iCloud inbox transcription flow.
@@ -17,8 +18,10 @@
 - `./src/siri.sh`: run the transcription flow manually.
 - `./src/install_launchd.sh`: install and start both `com.siri.simple` and `com.siri.voice-memos` LaunchAgents (the only command needed).
 - `./src/uninstall_launchd.sh`: remove both.
-- `uvx ruff check src/transcribe.py`: lint Python code.
-- `python3 -m py_compile src/transcribe.py`: quick syntax validation.
+- `uvx ruff check src/import_voice_memos.py src/test_ingest.py`: lint agentic Voice Memos code.
+- `uvx ruff check src/transcribe.py`: lint simple inbox transcription code.
+- `uv run python -m unittest discover -s src -p 'test_*.py'`: run focused unit tests.
+- `uv run python -m py_compile src/transcribe.py src/import_voice_memos.py`: quick syntax validation.
 
 ## Coding Style & Naming Conventions
 - Python 3.10+ with 4-space indentation and type hints where practical.
@@ -30,11 +33,11 @@
 - Use `ruff` as the formatting/lint quality gate for Python.
 
 ## Testing Guidelines
-- No formal test suite is currently included.
 - Validate changes with:
-  1. `uvx ruff check src/transcribe.py`
-  2. `python3 -m py_compile src/transcribe.py`
-  3. Manual smoke run with a sample `.m4a` in a configured voice memo directory.
+  1. `uv run python -m unittest discover -s src -p 'test_*.py'`
+  2. `uvx ruff check src/import_voice_memos.py src/test_ingest.py`
+  3. `uv run python -m py_compile src/transcribe.py src/import_voice_memos.py`
+  4. Manual smoke run with a sample `.m4a` in a configured voice memo directory.
 - Verify expected output file append behavior and confirm no duplicate processing in the relevant `logs/launchd_*_stderr.log`.
 
 ## Commit & Pull Request Guidelines

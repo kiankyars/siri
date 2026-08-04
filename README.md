@@ -4,7 +4,7 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
 
 ## Behavior
 
-- For each audio file, it generates markdown hyphen bullets.
+- For each simple-inbox audio file, it generates markdown hyphen bullets.
 - It writes into `notes/YYYY-MM-DD.md`:
   - files from the resolved `notes` inbox append into the root body of the daily note
   - files from the resolved `course` inbox append into `## Course`
@@ -14,11 +14,16 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
 - After a simple-ingest `.m4a` is successfully appended into the daily note, the source file is moved to macOS Trash.
 - Agentic Voice Memos processing:
   - watches the macOS Voice Memos store
+  - rescans recordings that arrive or finish syncing during an active importer run before exiting
   - processes recordings renamed exactly `monde` or `réflexion`
   - reads the original recording directly from the Voice Memos library
-  - `monde` writes into `people/{name}.md` under a `## YYYY-MM-DD` section
-  - `réflexion` writes into `notes/YYYY-MM-DD.md` under `## <few-word summary> #reflection`
+  - starts Codex in the Obsidian vault and explicitly invokes its `process-voice-memo` skill
+  - gives Codex the recording path, date, and route, then lets it use the vault context and its judgment to make every appropriate edit
+  - the skill identifies `people/{first-name}.md`, `notes/YYYY-MM-DD.md`, and `audio/` as the stable vault environment without prescribing a rigid output format
+  - after editing, Codex reviews the diff, commits only the changes attributable to that recording, and pushes them without running the vault-wide daily sync script
   - leaves source memos in Voice Memos for manual deletion
+
+The agentic skill lives in the vault at `.agents/skills/process-voice-memo/SKILL.md`. The Siri repository only detects routed recordings and hands each one to the vault agent.
 
 ## Setup
 

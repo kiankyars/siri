@@ -6,27 +6,37 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import time
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 try:
-    from .runtime_support import ensure_local_file, load_state, log_error, required_env, save_state
+    from .runtime_support import (
+        ensure_local_file,
+        load_state,
+        log_error,
+        required_env,
+        save_state,
+    )
 except ImportError:
-    from runtime_support import ensure_local_file, load_state, log_error, required_env, save_state
+    from runtime_support import (
+        ensure_local_file,
+        load_state,
+        log_error,
+        required_env,
+        save_state,
+    )
 
 load_dotenv()
 
 DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "siri_errors.log"
 DEFAULT_STATE_PATH = Path(__file__).resolve().parent.parent / "logs" / "voice_memos_import_state.json"
 DEFAULT_LIBRARY_DIR = Path.home() / "Library" / "Group Containers" / "group.com.apple.VoiceMemos.shared" / "Recordings"
-DEFAULT_ENDPOINTS_PATH = Path(__file__).resolve().with_name("obsidian_audio_routing_endpoints.json")
-DEFAULT_PROMPT_RENDERER = Path(__file__).resolve().with_name("render_codex_audio_prompt.py")
+ROUTES = ("monde", "réflexion")
 NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 
@@ -34,11 +44,8 @@ NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 class Config:
     codex_bin: str
     ffprobe_bin: str
-    endpoints_path: Path
-    prompt_renderer: Path
     state_path: Path
     error_log: Path
-    repo_root: Path
     vault_root: Path
     voice_memos_dir: Path
 
@@ -63,16 +70,12 @@ def resolve_binary(name: str, *candidates: str) -> str:
 
 
 def load_config() -> Config:
-    repo_root = Path(__file__).resolve().parent.parent
     daily_dir = Path(required_env("OBSIDIAN_DAILY_DIR")).expanduser().resolve()
     return Config(
         codex_bin=resolve_binary("codex", "/opt/homebrew/bin/codex", "/usr/local/bin/codex"),
         ffprobe_bin=resolve_binary("ffprobe", "/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"),
-        endpoints_path=Path(os.getenv("VOICE_MEMOS_ENDPOINTS_PATH", str(DEFAULT_ENDPOINTS_PATH))).expanduser(),
-        prompt_renderer=Path(os.getenv("VOICE_MEMOS_PROMPT_RENDERER", str(DEFAULT_PROMPT_RENDERER))).expanduser(),
         state_path=Path(os.getenv("VOICE_MEMOS_STATE_PATH", str(DEFAULT_STATE_PATH))).expanduser(),
         error_log=Path(os.getenv("VOICE_MEMOS_ERROR_LOG", str(DEFAULT_ERROR_LOG))).expanduser(),
-        repo_root=repo_root,
         vault_root=daily_dir.parent,
         voice_memos_dir=DEFAULT_LIBRARY_DIR,
     )
@@ -84,9 +87,12 @@ def normalize_token(value: str) -> str:
     return NON_ALNUM_RE.sub("-", ascii_only.lower()).strip("-")
 
 
-def load_endpoint_configs(endpoints_path: Path) -> dict[str, str]:
-    payload = json.loads(endpoints_path.read_text())
-    return {normalize_token(endpoint): endpoint for endpoint in payload}
+def load_routes() -> dict[str, str]:
+    return {normalize_token(route): route for route in ROUTES}
+
+
+def local_now() -> datetime:
+    return datetime.now(timezone.utc).astimezone()
 
 
 def discover_voice_memos(library_dir: Path) -> list[Path]:
@@ -164,30 +170,36 @@ def state_keys_for_memo(file_path: Path, metadata: VoiceMemoMetadata) -> list[st
     return [resolved_path]
 
 
-def build_prompt(config: Config, endpoint: str, audio_file: Path, recorded_at: datetime) -> str:
-    result = subprocess.run(
+def select_changed_voice_memos(
+    source_paths: list[Path],
+    observed_versions: dict[Path, tuple[int, int, int]],
+) -> list[Path]:
+    changed_paths: list[Path] = []
+    for source_path in source_paths:
+        try:
+            stats = source_path.stat()
+        except FileNotFoundError:
+            continue
+        version = (stats.st_size, stats.st_mtime_ns, getattr(stats, "st_blocks", 0))
+        if observed_versions.get(source_path) == version:
+            continue
+        observed_versions[source_path] = version
+        changed_paths.append(source_path)
+    return changed_paths
+
+
+def build_prompt(route: str, audio_file: Path, recorded_at: datetime) -> str:
+    return "\n".join(
         [
-            sys.executable,
-            str(config.prompt_renderer),
-            "--endpoint",
-            endpoint,
-            "--audio",
-            str(audio_file),
-            "--date",
-            recorded_at.astimezone().strftime("%Y-%m-%d"),
-            "--vault-root",
-            str(config.vault_root),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
+            "Use $process-voice-memo.",
+            "",
+            f"Recording: {audio_file}",
+            f"Recorded: {recorded_at.astimezone():%Y-%m-%d}",
+            f"Route: {route}",
+            "",
+            "Process it into the vault.",
+        ]
     )
-    if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or "Failed to build Codex prompt.")
-    prompt = result.stdout.strip()
-    if not prompt:
-        raise RuntimeError("Prompt renderer returned empty output.")
-    return prompt
 
 
 def run_codex(config: Config, prompt: str) -> bool:
@@ -197,8 +209,6 @@ def run_codex(config: Config, prompt: str) -> bool:
             "exec",
             "--dangerously-bypass-approvals-and-sandbox",
             "-C",
-            str(config.repo_root),
-            "--add-dir",
             str(config.vault_root),
             "--add-dir",
             str(config.voice_memos_dir),
@@ -208,109 +218,93 @@ def run_codex(config: Config, prompt: str) -> bool:
         capture_output=True,
         text=True,
         check=False,
+        cwd=str(config.vault_root),
     )
     if result.returncode != 0:
         log_error(config.error_log, f"Codex failed (code {result.returncode}): {result.stderr.strip()}")
         return False
     return True
 
-def run_gemini(config: Config, prompt: str) -> bool: 
-    result = subprocess.run( 
-        [ 
-            "gemini", 
-            "-y", 
-            "--include-directories", 
-            f"{config.vault_root},{config.voice_memos_dir}", 
-            "-p", 
-            prompt, 
-        ], 
-        cwd=str(config.repo_root), 
-        text=True, 
-        check=False, 
-    ) 
-    return result.returncode == 0 
-
-
-def run_claude(config: Config, prompt: str) -> None:
-    result = subprocess.run(
-        [
-            "claude",
-            "-p",
-            "--dangerously-skip-permissions",
-            "--add-dir",
-            str(config.vault_root),
-            "--add-dir",
-            str(config.voice_memos_dir),
-            prompt,
-        ],
-        cwd=str(config.repo_root),
-        stdin=subprocess.DEVNULL,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"claude exec failed with exit code {result.returncode}")
-
 
 def process_voice_memos(config: Config, dry_run: bool) -> int:
-    endpoint_configs = load_endpoint_configs(config.endpoints_path)
+    routes = load_routes()
     state = load_state(config.state_path)
     records = state.setdefault("records", {})
     matches = 0
-    source_paths = discover_voice_memos(config.voice_memos_dir)
-    first_path = source_paths[0].name if source_paths else "none"
-    log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace importer start: count={len(source_paths)} first={first_path}")
+    observed_versions: dict[Path, tuple[int, int, int]] = {}
+    discovered_paths = discover_voice_memos(config.voice_memos_dir)
+    first_path = discovered_paths[0].name if discovered_paths else "none"
+    log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Trace importer start: count={len(discovered_paths)} first={first_path}")
+    source_paths = select_changed_voice_memos(discovered_paths, observed_versions)
 
-    for source_path in source_paths:
-        if not source_path.exists():
-            continue
-        if not ensure_local_file(source_path):
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Timed out downloading Voice Memo: {source_path}")
-            continue
-        if not wait_for_stable_file(source_path):
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Voice Memo did not stabilize: {source_path}")
-            continue
+    quiet_scans = 0
+    while True:
+        if not source_paths:
+            quiet_scans += 1
+            if quiet_scans >= 2:
+                break
+        else:
+            quiet_scans = 0
 
-        try:
-            metadata = probe_voice_memo(source_path, config.ffprobe_bin)
-        except Exception as err:
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to inspect Voice Memo {source_path}: {err}")
-            continue
+        for source_path in source_paths:
+            if not source_path.exists():
+                continue
+            if not ensure_local_file(source_path):
+                log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Timed out downloading Voice Memo: {source_path}")
+                continue
+            if not wait_for_stable_file(source_path):
+                log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Voice Memo did not stabilize: {source_path}")
+                continue
 
-        endpoint = endpoint_configs.get(normalize_token(metadata.title))
-        if endpoint is None:
-            continue
-        state_keys = state_keys_for_memo(source_path, metadata)
-        if any(is_processed(records, key) for key in state_keys):
-            continue
-        log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace Voice Memo match: {source_path} -> {endpoint}")
+            try:
+                metadata = probe_voice_memo(source_path, config.ffprobe_bin)
+            except (OSError, RuntimeError, ValueError) as err:
+                log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Failed to inspect Voice Memo {source_path}: {err}")
+                continue
 
-        matches += 1
-        if dry_run:
-            print(f"{endpoint}: {source_path}")
-            continue
+            route = routes.get(normalize_token(metadata.title))
+            if route is None:
+                continue
+            state_keys = state_keys_for_memo(source_path, metadata)
+            if any(is_processed(records, key) for key in state_keys):
+                continue
+            log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Trace Voice Memo match: {source_path} -> {route}")
 
-        try:
-            prompt = build_prompt(config, endpoint, source_path, metadata.recorded_at)
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace agent start: {source_path}")
-            if not run_codex(config, prompt):
-                if not run_gemini(config, prompt):
-                    run_claude(config, prompt)
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Trace agent finish: {source_path}")
-        except Exception as err:
-            log_error(config.error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to process Voice Memo {source_path}: {err}")
-            continue
+            matches += 1
+            if dry_run:
+                print(f"{route}: {source_path}")
+                continue
 
-        record_key = metadata.voice_memo_uuid or str(source_path.resolve())
-        records.pop(str(source_path.resolve()), None)
-        records[record_key] = {
-            "endpoint": endpoint,
-            "processed_at": datetime.now().isoformat(),
-            "recorded_at": metadata.recorded_at.isoformat(),
-            "source_path": str(source_path.resolve()),
-            "title": metadata.title,
-        }
-        save_state(config.state_path, state)
+            try:
+                prompt = build_prompt(route, source_path, metadata.recorded_at)
+                log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Trace agent start: {source_path}")
+                if not run_codex(config, prompt):
+                    raise RuntimeError("Codex failed; the recording remains unprocessed.")
+                log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Trace agent finish: {source_path}")
+            except (OSError, RuntimeError) as err:
+                log_error(config.error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Failed to process Voice Memo {source_path}: {err}")
+                continue
+
+            record_key = metadata.voice_memo_uuid or str(source_path.resolve())
+            records.pop(str(source_path.resolve()), None)
+            records[record_key] = {
+                "endpoint": route,
+                "processed_at": local_now().isoformat(),
+                "recorded_at": metadata.recorded_at.isoformat(),
+                "source_path": str(source_path.resolve()),
+                "title": metadata.title,
+            }
+            save_state(config.state_path, state)
+
+        time.sleep(2)
+        discovered_paths = discover_voice_memos(config.voice_memos_dir)
+        source_paths = select_changed_voice_memos(discovered_paths, observed_versions)
+        if source_paths:
+            first_path = source_paths[0].name
+            log_error(
+                config.error_log,
+                f"[{local_now():%Y-%m-%d %H:%M:%S}] Trace importer rescan: count={len(source_paths)} first={first_path}",
+            )
 
     return matches
 
