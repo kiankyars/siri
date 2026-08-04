@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -10,8 +13,12 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
 
+try:
+    from .runtime_support import configured_env
+except ImportError:
+    from runtime_support import configured_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MODEL = "gemini-3.6-flash"
 DEFAULT_PROMPT = """Transcribe all intelligible speech in this recording faithfully.
 Preserve the spoken wording and natural speaker turns. Use generic speaker labels when useful.
 Do not summarize, omit substantive content, or infer anyone's identity unless their name is explicitly spoken.
@@ -73,17 +80,14 @@ def build_prompt(context: str | None = None) -> str:
     )
 
 
-def transcribe_audio(
+def transcribe_once(
     client: genai.Client,
     audio_file: Path,
     context: str | None = None,
+    *,
+    model_name: str | None = None,
 ) -> str:
-    audio_file = audio_file.expanduser().resolve()
-    if not audio_file.is_file():
-        raise FileNotFoundError(f"Audio file not found: {audio_file}")
-    if audio_file.stat().st_size == 0:
-        raise ValueError(f"Audio file is empty: {audio_file}")
-
+    selected_model = model_name or configured_env("GEMINI_MODEL")
     mime_type = audio_mime_type(audio_file)
     uploaded_file = client.files.upload(
         file=audio_file,
@@ -95,12 +99,12 @@ def transcribe_audio(
     try:
         active_file = wait_for_active_file(client, uploaded_file)
         response = client.models.generate_content(
-            model=DEFAULT_MODEL,
+            model=selected_model,
             contents=[active_file, build_prompt(context)],
         )
         transcript = (response.text or "").strip()
         if not transcript:
-            raise RuntimeError(f"{DEFAULT_MODEL} returned an empty transcript")
+            raise RuntimeError(f"{selected_model} returned an empty transcript")
         return transcript
     finally:
         if uploaded_file.name:
@@ -113,9 +117,103 @@ def transcribe_audio(
                 )
 
 
+def is_invalid_argument(error: errors.APIError) -> bool:
+    return error.code == 400 and "INVALID_ARGUMENT" in str(error)
+
+
+def transcribe_with_retries(
+    client: genai.Client,
+    audio_file: Path,
+    context: str | None,
+    max_attempts: int = 3,
+    *,
+    model_name: str | None = None,
+) -> str:
+    selected_model = model_name or configured_env("GEMINI_MODEL")
+    for attempt in range(max_attempts):
+        try:
+            return transcribe_once(
+                client,
+                audio_file,
+                context,
+                model_name=selected_model,
+            )
+        except errors.APIError as error:
+            if is_invalid_argument(error) or attempt == max_attempts - 1:
+                raise
+        except RuntimeError:
+            if attempt == max_attempts - 1:
+                raise
+        time.sleep(2**attempt)
+    raise RuntimeError("Transcription retry loop exited unexpectedly")
+
+
+def remux_m4a(source: Path, destination: Path) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg is required for the M4A compatibility remux")
+    result = subprocess.run(
+        [
+            ffmpeg,
+            "-v",
+            "error",
+            "-i",
+            str(source),
+            "-map",
+            "0:a:0",
+            "-c:a",
+            "copy",
+            "-map_metadata",
+            "-1",
+            "-movflags",
+            "+faststart",
+            str(destination),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "ffmpeg compatibility remux failed")
+
+
+def transcribe_audio(
+    client: genai.Client,
+    audio_file: Path,
+    context: str | None = None,
+) -> str:
+    audio_file = audio_file.expanduser().resolve()
+    if not audio_file.is_file():
+        raise FileNotFoundError(f"Audio file not found: {audio_file}")
+    if audio_file.stat().st_size == 0:
+        raise ValueError(f"Audio file is empty: {audio_file}")
+
+    model_name = configured_env("GEMINI_MODEL")
+    try:
+        return transcribe_with_retries(
+            client,
+            audio_file,
+            context,
+            model_name=model_name,
+        )
+    except errors.APIError as error:
+        if audio_file.suffix.lower() != ".m4a" or not is_invalid_argument(error):
+            raise
+
+    with tempfile.TemporaryDirectory(prefix="siri-transcribe-") as temp_dir:
+        remuxed_audio = Path(temp_dir) / f"{audio_file.stem}-remuxed.m4a"
+        remux_m4a(audio_file, remuxed_audio)
+        return transcribe_with_retries(
+            client,
+            remuxed_audio,
+            context,
+            model_name=model_name,
+        )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=f"Transcribe an audio file with {DEFAULT_MODEL}."
+        description="Transcribe an audio file with the GEMINI_MODEL configured in ~/.env."
     )
     parser.add_argument("audio_file", type=Path)
     parser.add_argument(

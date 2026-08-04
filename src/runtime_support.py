@@ -6,6 +6,22 @@ import subprocess
 import time
 from pathlib import Path
 
+from dotenv import dotenv_values
+
+HOME_ENV_PATH = Path.home() / ".env"
+
+
+def configured_env(name: str) -> str:
+    value = os.getenv(name)
+    if value and value.strip():
+        return value.strip()
+
+    home_value = dotenv_values(HOME_ENV_PATH).get(name)
+    if isinstance(home_value, str) and home_value.strip():
+        return home_value.strip()
+
+    raise RuntimeError(f"Missing required env var: {name} (set it in {HOME_ENV_PATH})")
+
 
 def required_env(name: str) -> str:
     value = os.getenv(name)

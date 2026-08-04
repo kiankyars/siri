@@ -8,7 +8,6 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
 - It writes into `notes/YYYY-MM-DD.md`:
   - files from the resolved `notes` inbox append into the root body of the daily note
   - files from the resolved `course` inbox append into `## Course`
-  - files from the resolved `jl` inbox append into `## JL`
   - if the daily note does not exist, it is created
 - `notes` is the catch-all simple inbox for podcasts, books, reading thoughts, and other uncategorized captures.
 - After a simple-ingest `.m4a` is successfully appended into the daily note, the source file is moved to macOS Trash.
@@ -18,7 +17,7 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
   - processes recordings renamed exactly `monde` or `réflexion`
   - reads the original recording directly from the Voice Memos library
   - starts Codex in the Obsidian vault and explicitly invokes its `process-voice-memo` skill
-  - gives Codex a reusable `siri-transcribe-audio` command pinned to `gemini-3.6-flash`, with no local or alternate-model fallback
+  - gives Codex a reusable `siri-transcribe-audio` command using `GEMINI_MODEL` from `~/.env`, with no local or alternate-model fallback
   - gives Codex the recording path, date, and route, then lets it use the vault context and its judgment to make every appropriate edit
   - the skill identifies `people/{first-name}.md`, `notes/YYYY-MM-DD.md`, and `audio/` as the stable vault environment without prescribing a rigid output format
   - after editing, Codex reviews the diff, commits only the changes attributable to that recording, and pushes them without running the vault-wide daily sync script
@@ -38,6 +37,8 @@ Required env vars:
 - `VOICE_MEMOS_DIR_1`
 - `OBSIDIAN_DAILY_DIR`
 
+Set `GEMINI_MODEL` once in `~/.env`; both transcription paths read that shared value.
+
 Error logs are written to `logs/siri_errors.log` by default.
 Agentic Voice Memos processed-file state is written to `logs/voice_memos_import_state.json`.
 
@@ -54,7 +55,7 @@ Both LaunchAgents run on the **same machine** (the personal Mac that has access 
 
 - `./src/install_launchd.sh`
   - Installs/refreshes **both** agents:
-    - `com.siri.simple`: watches the resolved `notes`/`course`/`jl` iCloud folders and runs `src/run_simple_ingest.sh`
+    - `com.siri.simple`: watches the resolved `notes`/`course` iCloud folders and runs `src/run_simple_ingest.sh`
     - `com.siri.voice-memos`: watches the Voice Memos library and runs `src/run_voice_memos_ingest.sh`
 
 Uninstall:

@@ -11,17 +11,26 @@ from google.genai import errors, types
 from send2trash import send2trash
 
 try:
-    from .runtime_support import ensure_local_file, log_error, required_env
+    from .runtime_support import (
+        configured_env,
+        ensure_local_file,
+        log_error,
+        required_env,
+    )
     from .simple_endpoints import SimpleEndpoint as SourceConfig
     from .simple_endpoints import load_simple_endpoints
 except ImportError:
-    from runtime_support import ensure_local_file, log_error, required_env
+    from runtime_support import (
+        configured_env,
+        ensure_local_file,
+        log_error,
+        required_env,
+    )
     from simple_endpoints import SimpleEndpoint as SourceConfig
     from simple_endpoints import load_simple_endpoints
 
 load_dotenv()
 
-MODEL_NAME = "gemini-3.6-flash"
 DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "siri_errors.log"
 HEADING_RE = re.compile(r"(?m)^## .*$")
 
@@ -40,8 +49,14 @@ def load_config() -> tuple[genai.Client, list[SourceConfig], Path, Path]:
 def extract_recorded_datetime(file_path: Path) -> datetime:
     match = re.search(r"(\d{4}-\d{2}-\d{2}).*?(\d{2}\.\d{2}\.\d{2})", file_path.name)
     if not match:
-        return datetime.fromtimestamp(file_path.stat().st_mtime)
-    return datetime.strptime(f"{match.group(1)} {match.group(2)}", "%Y-%m-%d %H.%M.%S")
+        return datetime.fromtimestamp(file_path.stat().st_mtime).astimezone()
+    return datetime.strptime(
+        f"{match.group(1)} {match.group(2)}", "%Y-%m-%d %H.%M.%S"
+    ).astimezone()
+
+
+def local_now() -> datetime:
+    return datetime.now().astimezone()
 
 
 def format_transcript_as_bullets(
@@ -49,6 +64,7 @@ def format_transcript_as_bullets(
     audio_file: Path,
     error_log: Path,
 ) -> str | None:
+    model_name = configured_env("GEMINI_MODEL")
     prompt = (
         "Convert this transcript into markdown hyphen bullets. "
         "Avoid over-splitting: keep consecutive sentences in the same bullet when they express one idea, and only start a new bullet when the topic clearly changes. "
@@ -61,23 +77,23 @@ def format_transcript_as_bullets(
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model=MODEL_NAME, contents=contents
+                model=model_name, contents=contents
             )
             return (response.text or "").strip()
         except errors.APIError as err:
             attempt_errors.append(f"attempt {attempt + 1}: {err}")
             if attempt < max_retries - 1:
                 time.sleep(2**attempt)
-        except Exception as err:
+        except Exception as err:  # noqa: BLE001 - retry transient SDK failures
             attempt_errors.append(f"attempt {attempt + 1}: {err}")
             if attempt < max_retries - 1:
                 time.sleep(2**attempt)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = local_now().strftime("%Y-%m-%d %H:%M:%S")
     details = (
         " | ".join(attempt_errors) if attempt_errors else "no model error captured"
     )
-    message = f"[{timestamp}] Failed to process file with {MODEL_NAME}: {audio_file}. Errors: {details}"
+    message = f"[{timestamp}] Failed to process file with {model_name}: {audio_file}. Errors: {details}"
     log_error(error_log, message)
 
 
@@ -153,7 +169,7 @@ def process_audio(
     error_log: Path,
 ) -> None:
     if not ensure_local_file(audio_file):
-        log_error(error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Timed out downloading iCloud file: {audio_file}")
+        log_error(error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Timed out downloading iCloud file: {audio_file}")
         return
     recorded_at = extract_recorded_datetime(audio_file)
     date_str = recorded_at.strftime("%Y-%m-%d")
@@ -169,18 +185,18 @@ def process_audio(
     try:
         write_note(target_file, updated_text)
         trash_file(audio_file)
-    except Exception as err:
+    except Exception as err:  # noqa: BLE001 - restore the note on any write/trash failure
         try:
             if original_exists:
                 write_note(target_file, original_text)
             elif target_file.exists():
                 target_file.unlink()
-        except Exception as rollback_err:
+        except Exception as rollback_err:  # noqa: BLE001 - log failed best-effort rollback
             log_error(
                 error_log,
-                f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to rollback note after processing error for {audio_file}: {rollback_err}",
+                f"[{local_now():%Y-%m-%d %H:%M:%S}] Failed to rollback note after processing error for {audio_file}: {rollback_err}",
             )
-        log_error(error_log, f"[{datetime.now():%Y-%m-%d %H:%M:%S}] Failed to process file {audio_file}: {err}")
+        log_error(error_log, f"[{local_now():%Y-%m-%d %H:%M:%S}] Failed to process file {audio_file}: {err}")
 
 
 def main() -> None:

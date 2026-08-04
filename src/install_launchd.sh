@@ -56,7 +56,6 @@ simple_replacements = {
     "__RUN_SCRIPT__": str((repo / "src" / "run_simple_ingest.sh").resolve()),
     "__WATCH_NOTES__": str(endpoint_dirs["notes"].resolve()),
     "__WATCH_COURSE__": str(endpoint_dirs["course"].resolve()),
-    "__WATCH_JL__": str(endpoint_dirs["jl"].resolve()),
     "__WORK_DIR__": str(repo),
     "__STDOUT_LOG__": str((repo / "logs" / "launchd_simple_stdout.log").resolve()),
     "__STDERR_LOG__": str((repo / "logs" / "launchd_simple_stderr.log").resolve()),

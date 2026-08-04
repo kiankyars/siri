@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 COURSE_HEADING = "## Course"
-JL_HEADING = "## JL"
 
 
 @dataclass(frozen=True)
@@ -17,7 +16,6 @@ class SimpleEndpoint:
 SIMPLE_ENDPOINTS = (
     ("notes", None),
     ("course", COURSE_HEADING),
-    ("jl", JL_HEADING),
 )
 
 
@@ -50,7 +48,9 @@ def resolve_endpoint_dir(endpoint: str, *anchors: Path) -> Path:
         if candidate.exists():
             return candidate
     if not candidates:
-        raise RuntimeError(f"No directory candidates available for endpoint: {endpoint}")
+        raise RuntimeError(
+            f"No directory candidates available for endpoint: {endpoint}"
+        )
     return candidates[0]
 
 

@@ -22,7 +22,7 @@
 - `uvx ruff check src/import_voice_memos.py src/test_ingest.py`: lint agentic Voice Memos code.
 - `uvx ruff check src/transcribe.py`: lint simple inbox transcription code.
 - `uvx ruff check src/transcribe_audio.py src/test_transcribe_audio.py`: lint the reusable Gemini transcription helper.
-- `uv run siri-transcribe-audio /path/to/recording.m4a`: transcribe one recording with Gemini 3.6 Flash.
+- `uv run siri-transcribe-audio /path/to/recording.m4a`: transcribe one recording with the `GEMINI_MODEL` selected in `~/.env`.
 - `uv run python -m unittest discover -s src -p 'test_*.py'`: run focused unit tests.
 - `uv run python -m py_compile src/transcribe.py src/transcribe_audio.py src/import_voice_memos.py`: quick syntax validation.
 
@@ -33,6 +33,7 @@
   - `VOICE_MEMOS_DIR_0`, `VOICE_MEMOS_DIR_1`
   - `OBSIDIAN_DAILY_DIR`
   - `GEMINI_API_KEY`
+- Shared home configuration: `GEMINI_MODEL` is read from `~/.env`.
 - Use `ruff` as the formatting/lint quality gate for Python.
 
 ## Testing Guidelines

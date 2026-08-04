@@ -14,6 +14,7 @@ from src.import_voice_memos import (
     load_routes,
     process_voice_memos,
     run_codex,
+    select_changed_voice_memos,
 )
 
 
@@ -94,6 +95,7 @@ class CodexInvocationTests(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "memo.m4a"
             source.touch()
+            resolved_source = str(source.resolve())
             metadata = VoiceMemoMetadata(
                 title="monde",
                 recorded_at=datetime(2026, 3, 29, 20, tzinfo=timezone.utc),
@@ -101,14 +103,18 @@ class CodexInvocationTests(unittest.TestCase):
             )
 
             with (
-                patch("src.import_voice_memos.discover_voice_memos", return_value=[source]),
+                patch(
+                    "src.import_voice_memos.discover_voice_memos", return_value=[source]
+                ),
                 patch("src.import_voice_memos.probe_voice_memo", return_value=metadata),
                 patch("src.import_voice_memos.time.sleep"),
             ):
                 self.assertEqual(process_voice_memos(self.config, dry_run=False), 1)
 
         self.assertEqual(load_state.return_value["records"], {})
-        save_state.assert_not_called()
+        save_state.assert_called_once()
+        saved_state = save_state.call_args.args[1]
+        self.assertNotIn(resolved_source, saved_state["observed_versions"])
 
     def test_importer_rescans_for_recordings_that_arrive_during_a_run(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -149,16 +155,51 @@ class CodexInvocationTests(unittest.TestCase):
                     "src.import_voice_memos.probe_voice_memo",
                     side_effect=lambda source, _ffprobe: metadata[source],
                 ),
-                patch("src.import_voice_memos.load_state", return_value={"records": {}}),
+                patch(
+                    "src.import_voice_memos.load_state", return_value={"records": {}}
+                ),
                 patch("src.import_voice_memos.save_state") as save_state,
-                patch("src.import_voice_memos.run_codex", return_value=True) as run_codex,
+                patch(
+                    "src.import_voice_memos.run_codex", return_value=True
+                ) as run_codex,
                 patch("src.import_voice_memos.log_error"),
                 patch("src.import_voice_memos.time.sleep"),
             ):
                 self.assertEqual(process_voice_memos(self.config, dry_run=False), 1)
 
         run_codex.assert_called_once()
-        save_state.assert_called_once()
+        self.assertEqual(save_state.call_count, 2)
+
+    def test_durable_version_index_skips_unchanged_recordings(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "memo.m4a"
+            source.write_bytes(b"memo")
+            observed_versions: dict[str, str] = {}
+            self.assertEqual(
+                select_changed_voice_memos([source], observed_versions), [source]
+            )
+            state = {
+                "schema_version": 2,
+                "records": {},
+                "observed_versions": observed_versions,
+            }
+
+            with (
+                patch(
+                    "src.import_voice_memos.discover_voice_memos",
+                    return_value=[source],
+                ),
+                patch("src.import_voice_memos.load_state", return_value=state),
+                patch("src.import_voice_memos.ensure_local_file") as ensure_local,
+                patch("src.import_voice_memos.probe_voice_memo") as probe,
+                patch("src.import_voice_memos.save_state") as save_state,
+                patch("src.import_voice_memos.time.sleep"),
+            ):
+                self.assertEqual(process_voice_memos(self.config, dry_run=False), 0)
+
+        ensure_local.assert_not_called()
+        probe.assert_not_called()
+        save_state.assert_not_called()
 
 
 if __name__ == "__main__":
