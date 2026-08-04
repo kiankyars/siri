@@ -76,7 +76,6 @@ def build_prompt(context: str | None = None) -> str:
 def transcribe_audio(
     client: genai.Client,
     audio_file: Path,
-    model: str = DEFAULT_MODEL,
     context: str | None = None,
 ) -> str:
     audio_file = audio_file.expanduser().resolve()
@@ -96,12 +95,12 @@ def transcribe_audio(
     try:
         active_file = wait_for_active_file(client, uploaded_file)
         response = client.models.generate_content(
-            model=model,
+            model=DEFAULT_MODEL,
             contents=[active_file, build_prompt(context)],
         )
         transcript = (response.text or "").strip()
         if not transcript:
-            raise RuntimeError(f"{model} returned an empty transcript")
+            raise RuntimeError(f"{DEFAULT_MODEL} returned an empty transcript")
         return transcript
     finally:
         if uploaded_file.name:
@@ -116,10 +115,9 @@ def transcribe_audio(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Transcribe an audio file with Gemini Flash."
+        description=f"Transcribe an audio file with {DEFAULT_MODEL}."
     )
     parser.add_argument("audio_file", type=Path)
-    parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
         "--context",
         help="Optional spelling hints such as likely names or specialist vocabulary.",
@@ -139,7 +137,6 @@ def main(argv: list[str] | None = None) -> int:
     transcript = transcribe_audio(
         client,
         args.audio_file,
-        model=args.model,
         context=args.context,
     )
     if args.output:

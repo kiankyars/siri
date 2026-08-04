@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from google.genai import types
 
+from src.transcribe import MODEL_NAME, format_transcript_as_bullets
 from src.transcribe_audio import (
     DEFAULT_MODEL,
     audio_mime_type,
@@ -70,6 +71,29 @@ class GeminiAudioTranscriptionTests(unittest.TestCase):
         self.assertEqual(call.kwargs["model"], DEFAULT_MODEL)
         self.assertIs(call.kwargs["contents"][0], uploaded)
         client.files.delete.assert_called_once_with(name="files/example")
+
+
+class SimpleInboxTranscriptionTests(unittest.TestCase):
+    def test_simple_inbox_is_pinned_to_gemini_36_flash(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audio_file = Path(temp_dir) / "memo.m4a"
+            audio_file.write_bytes(b"audio")
+            client = Mock()
+            client.models.generate_content.return_value = SimpleNamespace(
+                text="- Hello"
+            )
+
+            transcript = format_transcript_as_bullets(
+                client,
+                audio_file,
+                Path(temp_dir) / "errors.log",
+            )
+
+        self.assertEqual(transcript, "- Hello")
+        self.assertEqual(
+            client.models.generate_content.call_args.kwargs["model"],
+            MODEL_NAME,
+        )
 
 
 if __name__ == "__main__":

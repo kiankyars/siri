@@ -21,7 +21,7 @@ except ImportError:
 
 load_dotenv()
 
-MODEL_FALLBACKS = ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+MODEL_NAME = "gemini-3.6-flash"
 DEFAULT_ERROR_LOG = Path(__file__).resolve().parent.parent / "logs" / "siri_errors.log"
 HEADING_RE = re.compile(r"(?m)^## .*$")
 
@@ -57,24 +57,27 @@ def format_transcript_as_bullets(
     audio_bytes = audio_file.read_bytes()
     contents = [prompt, types.Part.from_bytes(data=audio_bytes, mime_type="audio/mp4")]
     max_retries = 3
-    fallback_errors: list[str] = []
-    for model_name in MODEL_FALLBACKS:
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(model=model_name, contents=contents)
-                return (response.text or "").strip()
-            except errors.APIError as err:
-                fallback_errors.append(f"{model_name} (attempt {attempt + 1}): {err}")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
-            except Exception as err:
-                fallback_errors.append(f"{model_name} (attempt {attempt + 1}): {err}")
-                if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+    attempt_errors: list[str] = []
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=MODEL_NAME, contents=contents
+            )
+            return (response.text or "").strip()
+        except errors.APIError as err:
+            attempt_errors.append(f"attempt {attempt + 1}: {err}")
+            if attempt < max_retries - 1:
+                time.sleep(2**attempt)
+        except Exception as err:
+            attempt_errors.append(f"attempt {attempt + 1}: {err}")
+            if attempt < max_retries - 1:
+                time.sleep(2**attempt)
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    details = " | ".join(fallback_errors) if fallback_errors else "no model error captured"
-    message = f"[{timestamp}] Failed to process file: {audio_file}. All model fallbacks failed. Errors: {details}"
+    details = (
+        " | ".join(attempt_errors) if attempt_errors else "no model error captured"
+    )
+    message = f"[{timestamp}] Failed to process file with {MODEL_NAME}: {audio_file}. Errors: {details}"
     log_error(error_log, message)
 
 

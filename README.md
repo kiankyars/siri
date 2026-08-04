@@ -18,7 +18,7 @@ Transcribes `.m4a` voice memos into Obsidian notes and can also process routed V
   - processes recordings renamed exactly `monde` or `réflexion`
   - reads the original recording directly from the Voice Memos library
   - starts Codex in the Obsidian vault and explicitly invokes its `process-voice-memo` skill
-  - gives Codex a reusable `siri-transcribe-audio` command backed by `gemini-3.6-flash`
+  - gives Codex a reusable `siri-transcribe-audio` command pinned to `gemini-3.6-flash`, with no local or alternate-model fallback
   - gives Codex the recording path, date, and route, then lets it use the vault context and its judgment to make every appropriate edit
   - the skill identifies `people/{first-name}.md`, `notes/YYYY-MM-DD.md`, and `audio/` as the stable vault environment without prescribing a rigid output format
   - after editing, Codex reviews the diff, commits only the changes attributable to that recording, and pushes them without running the vault-wide daily sync script
