@@ -95,6 +95,32 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
             MODEL_NAME,
         )
 
+    def test_simple_inbox_retries_only_the_pinned_model(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            audio_file = Path(temp_dir) / "memo.m4a"
+            audio_file.write_bytes(b"audio")
+            client = Mock()
+            client.models.generate_content.side_effect = RuntimeError("unavailable")
+
+            with (
+                patch("src.transcribe.time.sleep"),
+                patch("src.transcribe.log_error"),
+            ):
+                transcript = format_transcript_as_bullets(
+                    client,
+                    audio_file,
+                    Path(temp_dir) / "errors.log",
+                )
+
+        self.assertIsNone(transcript)
+        self.assertEqual(client.models.generate_content.call_count, 3)
+        self.assertTrue(
+            all(
+                call.kwargs["model"] == MODEL_NAME
+                for call in client.models.generate_content.call_args_list
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
