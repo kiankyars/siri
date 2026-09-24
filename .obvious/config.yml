@@ -1,0 +1,4 @@
+# .obvious/config.yml — repo policy for obvious autobuild
+# Auto-detected from GitHub repo settings (2026-09-24): all merge methods enabled.
+default_branch: main
+merge_method: merge
