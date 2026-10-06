@@ -338,7 +338,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
                 patch("src.transcribe.optional_env", return_value=""),
                 patch("src.transcribe.ensure_local_file", return_value=True),
                 patch("src.transcribe.time.sleep") as sleep,
-                patch("src.transcribe.trash_file") as trash_file,
+                patch("src.transcribe.archive_file") as archive_file,
             ):
                 status = run_simple_inbox()
             first_remains = first.exists()
@@ -348,7 +348,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(client.models.generate_content.call_count, 1)
         sleep.assert_not_called()
-        trash_file.assert_not_called()
+        archive_file.assert_not_called()
         self.assertFalse(note_exists)
         self.assertTrue(first_remains)
         self.assertTrue(second_remains)
@@ -498,7 +498,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
                     "src.transcribe.vault_operation_lock",
                     side_effect=nullcontext,
                 ),
-                patch("src.transcribe.trash_file") as trash_file,
+                patch("src.transcribe.archive_file") as archive_file,
             ):
                 status = run_simple_inbox()
 
@@ -506,7 +506,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
 
         self.assertEqual(status, 1)
         self.assertEqual(client.models.generate_content.call_count, 4)
-        trash_file.assert_called_once_with(second)
+        archive_file.assert_called_once_with(second)
         self.assertIn("## Course à Pied\n\n- Second recording", note)
         self.assertNotIn("first", note.lower())
 
@@ -564,7 +564,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
         self.assertEqual(mode, 0o600)
         self.assertEqual(content, "Updated\n")
 
-    def test_trash_failure_reprocesses_without_recovery_marker(self) -> None:
+    def test_archive_failure_reprocesses_without_recovery_marker(self) -> None:
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             source_dir = temp_path / "course"
@@ -592,9 +592,9 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
                     side_effect=nullcontext,
                 ),
                 patch(
-                    "src.transcribe.trash_file",
-                    side_effect=[OSError("trash unavailable"), None],
-                ) as trash_file,
+                    "src.transcribe.archive_file",
+                    side_effect=[OSError("archive unavailable"), None],
+                ) as archive_file,
                 patch("src.transcribe.log_error") as log_error,
             ):
                 process_audio(client, audio_file, source, daily_dir, error_log)
@@ -603,10 +603,10 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
             content = note.read_text(encoding="utf-8")
 
         self.assertEqual(client.models.generate_content.call_count, 2)
-        self.assertEqual(trash_file.call_count, 2)
+        self.assertEqual(archive_file.call_count, 2)
         self.assertEqual(content.count("- Captured idea"), 2)
         self.assertNotIn("siri-ingest", content)
-        self.assertIn("trash unavailable", log_error.call_args_list[0].args[1])
+        self.assertIn("archive unavailable", log_error.call_args_list[0].args[1])
 
     def test_unreadable_note_does_not_block_later_queue_item(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -648,7 +648,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
                     "src.transcribe.vault_operation_lock",
                     side_effect=nullcontext,
                 ),
-                patch("src.transcribe.trash_file") as trash_file,
+                patch("src.transcribe.archive_file") as archive_file,
                 patch("src.transcribe.log_error") as log_error,
             ):
                 run_simple_inbox()
@@ -658,7 +658,7 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
 
         self.assertFalse(first_note_exists)
         self.assertIn("- Second capture", second_note)
-        trash_file.assert_called_once_with(second)
+        archive_file.assert_called_once_with(second)
         self.assertEqual(client.models.generate_content.call_count, 1)
         self.assertIn("note unavailable", log_error.call_args_list[0].args[1])
 

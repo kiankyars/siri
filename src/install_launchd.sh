@@ -85,5 +85,7 @@ done
 bootout_label "$SIMPLE_LABEL"
 bootstrap_label "$SIMPLE_LABEL"
 
+python3 "$SCRIPT_DIR/install_cleanup_cron.py"
+
 echo "Installed and started $SIMPLE_LABEL"
 echo "plist: $HOME/Library/LaunchAgents/${SIMPLE_LABEL}.plist"

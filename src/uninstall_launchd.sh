@@ -14,5 +14,8 @@ launchctl bootout "gui/${UID_VALUE}/${label}" >/dev/null 2>&1 || true
 
 rm -f "$plist"
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+python3 "$SCRIPT_DIR/install_cleanup_cron.py" --remove
+
 echo "Removed $label (if it was present)."
 echo "plist: $plist (deleted)"

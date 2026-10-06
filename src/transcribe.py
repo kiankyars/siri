@@ -11,7 +11,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 from google.genai import errors, types
-from send2trash import send2trash
 
 
 class QuotaExhausted(RuntimeError):
@@ -19,6 +18,7 @@ class QuotaExhausted(RuntimeError):
 
 
 try:
+    from .processed_audio import archive_file
     from .runtime_support import (
         configured_env,
         ensure_local_file,
@@ -30,6 +30,7 @@ try:
     from .simple_endpoints import SimpleEndpoint as SourceConfig
     from .simple_endpoints import load_simple_endpoints
 except ImportError:
+    from processed_audio import archive_file
     from runtime_support import (
         configured_env,
         ensure_local_file,
@@ -304,10 +305,6 @@ def write_capture_to_note(
     raise RuntimeError(f"Note stayed busy during ingestion: {target_file}")
 
 
-def trash_file(file_path: Path) -> None:
-    send2trash(str(file_path))
-
-
 def process_audio(
     client: genai.Client,
     audio_file: Path,
@@ -362,7 +359,7 @@ def process_audio(
                 bullets,
                 source.section_heading,
             )
-            trash_file(audio_file)
+            archive_file(audio_file)
     except Exception as err:  # noqa: BLE001 - retain the source for retry
         log_error(
             error_log,
