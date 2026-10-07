@@ -4,20 +4,20 @@
 - Simple inbox transcription lives in `src/transcribe.py`.
 - `src/simple_endpoints.py` routes running dictations from `course` into `## Course à Pied`.
 - Reusable Gemini audio transcription lives in `src/transcribe_audio.py`.
-- `src/processed_audio.py` archives processed recordings and deletes files older than 30 days; `src/install_cleanup_cron.py` manages its daily cron job.
+- `src/processed_audio.py` archives processed recordings and deletes files older than seven days.
 - Operational scripts are in `src/`:
   - `src/siri.sh` runs the simple inbox flow locally.
   - `src/run_simple_ingest.sh` runs the iCloud inbox transcription flow.
-  - `src/install_launchd.sh` installs or refreshes `com.siri.simple` and daily cleanup.
+  - `src/install_launchd.sh` installs or refreshes `com.siri.simple` and `com.siri.cleanup`.
   - `src/uninstall_launchd.sh` removes both scheduled jobs.
-- The launchd template is `com.siri.simple.plist.template`.
+- Launchd templates are `com.siri.simple.plist.template` and `com.siri.cleanup.plist.template`; cleanup runs daily at 10:00 local time.
 - Runtime logs are written under `logs/` (for example, `launchd_simple_*.log` and `siri_errors.log`).
 - Project metadata and dependencies are defined in `pyproject.toml`.
 
 ## Runtime Boundary
 - Ingestion may write vault content and its operational logs, state, and temporary
   files. Successfully transcribed recordings move to the ignored `processed/` folder.
-- Archive moves and cleanup must share the archive lock. Cleanup deletes only regular `.m4a` files directly in `processed/`, using their preserved modification times and a 30-day cutoff.
+- Archive moves and cleanup must share the archive lock. Cleanup deletes only regular `.m4a` files directly in `processed/`, using their preserved modification times and a seven-day cutoff.
 - Vault writes must use the shared kernel-held vault operation lock. Simple note
   replacement must remain atomic under concurrent edits. Do not add ingestion IDs,
   hashes, or recovery markers to vault notes.
@@ -27,9 +27,9 @@
 ## Build, Test, and Development Commands
 - `uv sync`: install/update the virtual environment and dependencies.
 - `./src/siri.sh`: run the transcription flow manually.
-- `./src/install_launchd.sh`: install and start `com.siri.simple`.
-- `./src/uninstall_launchd.sh`: remove the LaunchAgent and cleanup cron job.
-- `uv run python src/processed_audio.py --dry-run`: preview the 30-day cleanup.
+- `./src/install_launchd.sh`: install and start both LaunchAgents.
+- `./src/uninstall_launchd.sh`: remove both LaunchAgents.
+- `uv run python src/processed_audio.py --dry-run`: preview the seven-day cleanup.
 - `uvx ruff check src/transcribe.py`: lint simple inbox transcription code.
 - `uvx ruff check src/transcribe_audio.py src/test_transcribe_audio.py`: lint the reusable Gemini transcription helper.
 - `uv run siri-transcribe-audio /path/to/recording.m4a`: transcribe one recording with the `GEMINI_MODEL` selected in `~/.env`.

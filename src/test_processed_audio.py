@@ -7,8 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from src.install_cleanup_cron import update_crontab
-from src.processed_audio import RETENTION_DAYS, archive_file, cleanup_processed_files
+from src.processed_audio import archive_file, cleanup_processed_files
 from src.simple_endpoints import SimpleEndpoint
 from src.transcribe import process_audio
 
@@ -55,7 +54,7 @@ class ProcessedAudioTests(unittest.TestCase):
     ) -> None:
         self.processed.mkdir()
         now = 10_000_000
-        cutoff = now - RETENTION_DAYS * 86400
+        cutoff = now - 7 * 86400
         for name, modified in (
             ("old.m4a", cutoff - 1),
             ("boundary.m4a", cutoff),
@@ -131,20 +130,6 @@ class ProcessedAudioTests(unittest.TestCase):
         self.assertEqual(
             (daily / "2026-10-06.md").read_text(), "## Course à Pied\n\n- Capture\n"
         )
-
-
-class CleanupCronTests(unittest.TestCase):
-    def test_install_is_idempotent_and_removal_preserves_other_jobs(self) -> None:
-        original = 'MAILTO=""\n15 2 * * * /usr/bin/true\n'
-        command = "/path/to/python /path/to/processed_audio.py"
-        installed = update_crontab(original, command)
-        self.assertIn(f"0 10 * * * {command}\n", installed)
-        self.assertEqual(update_crontab(installed, command), installed)
-        self.assertEqual(update_crontab(installed, None), original)
-
-    def test_malformed_managed_block_is_rejected(self) -> None:
-        with self.assertRaises(RuntimeError):
-            update_crontab("# BEGIN siri processed audio cleanup\n", "command")
 
 
 if __name__ == "__main__":

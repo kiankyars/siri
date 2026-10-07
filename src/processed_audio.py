@@ -13,7 +13,7 @@ except ImportError:
     from runtime_support import exclusive_file_lock
 
 PROCESSED_DIR = Path(__file__).resolve().parent.parent / "processed"
-RETENTION_DAYS = 30
+RETENTION_DAYS = 7
 
 
 def archive_file(file_path: Path) -> Path:
@@ -60,7 +60,7 @@ def cleanup_processed_files(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Permanently delete processed M4A files older than 30 days."
+        description=f"Permanently delete processed M4A files older than {RETENTION_DAYS} days."
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

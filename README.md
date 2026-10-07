@@ -18,7 +18,7 @@ Transcribes `.m4a` files from two configured iCloud inboxes into Obsidian daily 
   - if the daily note does not exist, it is created
 - `notes` is the catch-all simple inbox for podcasts, books, reading thoughts, and other uncategorized captures.
 - After a simple-ingest `.m4a` is successfully appended into the daily note, the source file is moved to the repository's `processed/` folder. Original modification times are preserved; duplicate filenames receive a numeric suffix.
-- A daily cron job at 10:00 local time permanently deletes regular `.m4a` files directly in `processed/` whose modification time is more than 30 days old. It skips subdirectories and symlinks. Archive moves and cleanup share a lock.
+- The `com.siri.cleanup` LaunchAgent runs daily at 10:00 local time and permanently deletes regular `.m4a` files directly in `processed/` whose modification time is more than seven days old. It skips subdirectories and symlinks. Archive moves and cleanup share a lock.
 - Simple note updates use the vault operation lock and atomic replacement. They do not add internal IDs, hashes, or recovery markers to the Markdown. If archiving fails after the note is written, the source remains for retry; a later retry may transcribe and append that capture again.
   - The lock coordinates Siri with the vault synchronizer. External editors do not participate in that advisory lock; the writer rebuilds on changes it detects before replacement, while the synchronizer's settle window provides the broader safety net.
 - Siri ingestion never stages, commits, pulls, fetches, merges, rebases, or pushes
@@ -51,17 +51,16 @@ Cleanup output and errors go to `logs/cleanup_processed.log`.
 
 ## Install launchd watchers
 
-The LaunchAgent runs on the Mac that has access to the configured iCloud audio sources. The only installation command needed is:
+The LaunchAgents run on the Mac that has access to the configured iCloud audio sources. The only installation command needed is:
 
 - `./src/install_launchd.sh`
   - Installs or refreshes `com.siri.simple`, which watches the resolved `notes` and `course` inboxes and runs `src/run_simple_ingest.sh`.
-  - Installs the daily cleanup cron job, preserving other crontab entries. Cron runs while the Mac is awake; missed runs wait until the next scheduled day.
+  - Installs `com.siri.cleanup` from `com.siri.cleanup.plist.template` and runs cleanup once. Its daily calendar schedule runs missed jobs when the Mac wakes from sleep.
 
 Uninstall:
 
 - `./src/uninstall_launchd.sh`
 
-Uninstalling also removes the cleanup cron job; archived recordings remain in `processed/`.
+Uninstalling removes both LaunchAgents; archived recordings remain in `processed/`.
 
-The LaunchAgent is built from `com.siri.simple.plist.template` and invokes `/bin/zsh` explicitly so the background job uses its
-Full Disk Access grant when reading iCloud and the Obsidian vault.
+The ingestion LaunchAgent is built from `com.siri.simple.plist.template` and invokes `/bin/zsh` explicitly so the background job uses its Full Disk Access grant when reading iCloud and the Obsidian vault. Cleanup uses the repository's virtual-environment Python.
