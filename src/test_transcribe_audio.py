@@ -125,6 +125,7 @@ class GeminiAudioTranscriptionTests(unittest.TestCase):
                 "src.transcribe_audio.configured_env",
                 return_value="gemini-test-model",
             ),
+            patch("src.transcribe_audio.optional_env", return_value=""),
             patch("src.transcribe_audio.time.sleep"),
         ):
             transcript = transcribe_with_retries(
@@ -165,6 +166,113 @@ class GeminiAudioTranscriptionTests(unittest.TestCase):
                 for call in transcribe_once.call_args_list
             )
         )
+
+    def test_capacity_error_switches_to_fallback_key_with_fresh_retries(self) -> None:
+        primary = Mock()
+        fallback = Mock()
+        unavailable = errors.ServerError(
+            503,
+            {"error": {"code": 503, "message": "unavailable", "status": "UNAVAILABLE"}},
+        )
+
+        fallback_attempts = 0
+
+        def transcribe(client, *_args, **_kwargs):
+            nonlocal fallback_attempts
+            if client is primary:
+                raise unavailable
+            fallback_attempts += 1
+            if fallback_attempts < 3:
+                raise TimeoutError("fallback timeout")
+            return "Speaker 1: Hello"
+
+        with (
+            patch(
+                "src.transcribe_audio.transcribe_once", side_effect=transcribe
+            ) as once,
+            patch("src.transcribe_audio.optional_env", return_value="fallback-key"),
+            patch(
+                "src.transcribe_audio.genai.Client", return_value=fallback
+            ) as client_cls,
+            patch("src.transcribe_audio.time.sleep"),
+        ):
+            transcript = transcribe_with_retries(
+                primary,
+                Path("recording.m4a"),
+                context=None,
+                model_name="gemini-test-model",
+            )
+
+        self.assertEqual(transcript, "Speaker 1: Hello")
+        client_cls.assert_called_once_with(api_key="fallback-key")
+        self.assertEqual(
+            [call.args[0] for call in once.call_args_list],
+            [primary, fallback, fallback, fallback],
+        )
+
+    def test_fallback_key_is_used_once_and_exhaustion_raises(self) -> None:
+        for code in (429, 503, 504):
+            with self.subTest(code=code):
+                primary = Mock()
+                fallback = Mock()
+                unavailable = errors.APIError(
+                    code, {"error": {"code": code, "message": "unavailable"}}
+                )
+                with (
+                    patch(
+                        "src.transcribe_audio.transcribe_once",
+                        side_effect=unavailable,
+                    ) as once,
+                    patch(
+                        "src.transcribe_audio.optional_env", return_value="fallback-key"
+                    ),
+                    patch(
+                        "src.transcribe_audio.genai.Client", return_value=fallback
+                    ) as client_cls,
+                    patch("src.transcribe_audio.time.sleep"),
+                    self.assertRaises(errors.APIError) as raised,
+                ):
+                    transcribe_with_retries(
+                        primary,
+                        Path("recording.m4a"),
+                        None,
+                        model_name="gemini-test-model",
+                    )
+
+                self.assertIs(raised.exception, unavailable)
+                client_cls.assert_called_once_with(api_key="fallback-key")
+                self.assertEqual(
+                    [call.args[0] for call in once.call_args_list],
+                    [primary, fallback, fallback, fallback],
+                )
+                self.assertTrue(
+                    all(
+                        call.kwargs["model_name"] == "gemini-test-model"
+                        for call in once.call_args_list
+                    )
+                )
+
+    def test_invalid_argument_does_not_switch_keys(self) -> None:
+        invalid = errors.ClientError(
+            400, {"error": {"code": 400, "status": "INVALID_ARGUMENT"}}
+        )
+        with (
+            patch("src.transcribe_audio.transcribe_once", side_effect=invalid) as once,
+            patch("src.transcribe_audio.optional_env", return_value="fallback-key"),
+            patch("src.transcribe_audio.genai.Client") as client_cls,
+            patch("src.transcribe_audio.time.sleep") as sleep,
+            self.assertRaises(errors.ClientError),
+        ):
+            transcribe_with_retries(
+                Mock(),
+                Path("recording.m4a"),
+                None,
+                model_name="gemini-test-model",
+            )
+
+        once.assert_called_once()
+        client_cls.assert_not_called()
+        sleep.assert_not_called()
 
     def test_invalid_m4a_uses_lossless_compatibility_remux(self) -> None:
         invalid = errors.ClientError(
@@ -310,7 +418,12 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
     def test_quota_exhausted_does_not_retry_or_drain_the_queue(self) -> None:
         quota = errors.APIError(
             429,
-            {"error": {"message": "RESOURCE_EXHAUSTED", "status": "RESOURCE_EXHAUSTED"}},
+            {
+                "error": {
+                    "message": "RESOURCE_EXHAUSTED",
+                    "status": "RESOURCE_EXHAUSTED",
+                }
+            },
         )
         with TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -356,7 +469,12 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
     def test_quota_falls_back_to_second_api_key(self) -> None:
         quota = errors.APIError(
             429,
-            {"error": {"message": "RESOURCE_EXHAUSTED", "status": "RESOURCE_EXHAUSTED"}},
+            {
+                "error": {
+                    "message": "RESOURCE_EXHAUSTED",
+                    "status": "RESOURCE_EXHAUSTED",
+                }
+            },
         )
         with TemporaryDirectory() as temp_dir:
             audio_file = Path(temp_dir) / "memo.m4a"
@@ -374,7 +492,9 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
                     return_value="gemini-test-model",
                 ),
                 patch("src.transcribe.optional_env", return_value="fallback-key"),
-                patch("src.transcribe.genai.Client", return_value=fallback) as client_cls,
+                patch(
+                    "src.transcribe.genai.Client", return_value=fallback
+                ) as client_cls,
             ):
                 transcript = format_transcript_as_bullets(
                     primary,
@@ -427,7 +547,12 @@ class SimpleInboxTranscriptionTests(unittest.TestCase):
     def test_quota_fallback_gets_its_own_retry_budget(self) -> None:
         quota = errors.APIError(
             429,
-            {"error": {"message": "RESOURCE_EXHAUSTED", "status": "RESOURCE_EXHAUSTED"}},
+            {
+                "error": {
+                    "message": "RESOURCE_EXHAUSTED",
+                    "status": "RESOURCE_EXHAUSTED",
+                }
+            },
         )
         with TemporaryDirectory() as temp_dir:
             audio_file = Path(temp_dir) / "memo.m4a"

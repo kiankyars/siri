@@ -14,9 +14,9 @@ from google import genai
 from google.genai import errors, types
 
 try:
-    from .runtime_support import configured_env
+    from .runtime_support import configured_env, optional_env
 except ImportError:
-    from runtime_support import configured_env
+    from runtime_support import configured_env, optional_env
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GEMINI_REQUEST_TIMEOUT_MS = 120_000
@@ -138,6 +138,12 @@ def is_invalid_argument(error: errors.APIError) -> bool:
     return error.code == 400 and "INVALID_ARGUMENT" in str(error)
 
 
+def should_use_fallback_key(error: BaseException) -> bool:
+    if not isinstance(error, errors.APIError):
+        return False
+    return error.code in {429, 503, 504} or "RESOURCE_EXHAUSTED" in str(error)
+
+
 def transcribe_with_retries(
     client: genai.Client,
     audio_file: Path,
@@ -147,24 +153,35 @@ def transcribe_with_retries(
     model_name: str | None = None,
 ) -> str:
     selected_model = model_name or configured_env("GEMINI_MODEL")
-    for attempt in range(max_attempts):
+    active_client = client
+    fallback_key = optional_env("GEMINI_API_KEY_2")
+    attempt = 0
+    while attempt < max_attempts:
+        attempt += 1
         try:
             return transcribe_once(
-                client,
+                active_client,
                 audio_file,
                 context,
                 model_name=selected_model,
             )
         except errors.APIError as error:
-            if is_invalid_argument(error) or attempt == max_attempts - 1:
+            if is_invalid_argument(error):
+                raise
+            if should_use_fallback_key(error) and fallback_key:
+                active_client = genai.Client(api_key=fallback_key)
+                fallback_key = ""
+                attempt = 0
+                continue
+            if attempt == max_attempts:
                 raise
         except RuntimeError:
-            if attempt == max_attempts - 1:
+            if attempt == max_attempts:
                 raise
         except Exception:
-            if attempt == max_attempts - 1:
+            if attempt == max_attempts:
                 raise
-        time.sleep(2**attempt)
+        time.sleep(2 ** (attempt - 1))
     raise RuntimeError("Transcription retry loop exited unexpectedly")
 
 
